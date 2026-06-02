@@ -24,8 +24,12 @@ reproduces CodexBar's "today ~200M" to within rounding):
   summing it would over-count), deduped by session UUID across `sessions/` and
   `archived_sessions/`.
 
-Day boundary is **local** by default (your real day, UTC+8). Set
-`"day_boundary": "utc"` in `config.json` to mirror CodexBar's boundary exactly.
+Day boundary is **local** by default (your real day, UTC+8) — what "today's
+goal" means to a human, and what the pace window aligns to. A naïve UTC-date
+filter happened to match CodexBar's "~200M" at one afternoon reading; that's a
+single coincidental datapoint, not proof CodexBar uses UTC. If your numbers
+drift a couple percent from CodexBar near the day edges and you'd rather match
+it, set `"day_boundary": "utc"` in `config.json` and compare.
 
 ## Parts
 

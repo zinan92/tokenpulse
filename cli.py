@@ -37,7 +37,11 @@ def _print_limits(info: dict):
     parts = []
     for w in info["windows"]:
         rin = f" {w['reset_in']}" if w["reset_in"] else ""
-        parts.append(f"{w['name']} {w['left_percent']}%left{rin}")
+        seg = f"{w['name']} {w['left_percent']}%left{rin}"
+        p = w.get("pace")
+        if p and not p["on_pace"] and p["behind_by"] >= 5:
+            seg += f" ⚠落后{p['behind_by']:.0f}%"
+        parts.append(seg)
     print(f"      plan{stale}: " + "  ·  ".join(parts))
 
 

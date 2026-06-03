@@ -24,7 +24,11 @@ PROVIDER_FILE = {"claude": "claude.json", "codex": "codex.json"}
 
 # How old the newest sample may be before we flag the feed as stale (CodexBar
 # samples ~hourly; older than this usually means the app isn't running).
-STALE_AFTER_SECONDS = 3 * 3600
+STALE_AFTER_SECONDS = 6 * 3600  # CodexBar samples irregularly (idle/sleep gaps)
+
+# Pace only applies to weekly-scale windows; a 5h session burst limit isn't
+# something you pace-fill over time.
+PACE_MIN_WINDOW_MINUTES = 1440  # 1 day
 
 # Preferred display order; unknown window names sort after these.
 WINDOW_ORDER = {"session": 0, "weekly": 1, "opus": 2, "sonnet": 3}
@@ -56,6 +60,40 @@ def reset_in(resets_at: str | None, now: datetime | None = None) -> str:
     if h:
         return f"{h}h{m}m"
     return f"{m}m"
+
+
+def window_pace(window_minutes, resets_at: str | None, used_percent,
+                now: datetime | None = None) -> dict | None:
+    """Utilization pace for a quota window, for the "use it all" goal.
+
+    A window of length `window_minutes` ends at `resets_at`; by the fraction of
+    it elapsed you'd need to have used that same fraction to fully consume the
+    allowance before it resets. Returns elapsed %, the used % you'd expect by
+    now, and how many points you're *behind* (unused headroom you're on track
+    to waste). None when inputs are insufficient.
+
+    Only meaningful for long (weekly-scale) windows — a 5h session window is a
+    burst limit you don't pace-fill, so we skip windows shorter than a day.
+    """
+    if not window_minutes or resets_at is None or used_percent is None:
+        return None
+    if window_minutes < PACE_MIN_WINDOW_MINUTES:
+        return None
+    now = now or datetime.now(timezone.utc)
+    end = _parse(resets_at)
+    if end is None:
+        return None
+    total = window_minutes * 60.0
+    remaining = (end - now).total_seconds()
+    elapsed = max(0.0, min(1.0, 1 - remaining / total))
+    expected = round(elapsed * 100, 1)
+    behind_by = round(max(0.0, expected - used_percent), 1)
+    return {
+        "elapsed_percent": expected,          # == expected used% to finish flat
+        "expected_used_percent": expected,
+        "behind_by": behind_by,               # points of allowance you're trailing
+        "on_pace": used_percent >= expected,
+    }
 
 
 def _select_account(data: dict) -> list | None:
@@ -105,14 +143,17 @@ def _tool_limits(tool: str, now: datetime) -> dict:
         ct = _parse(captured)
         if ct and (newest is None or ct > newest):
             newest = ct
+        ra = last.get("resets_at") or last.get("resetsAt")
+        wm = w.get("windowMinutes")
         windows.append({
             "name": w.get("name", "?"),
-            "window_minutes": w.get("windowMinutes"),
+            "window_minutes": wm,
             "used_percent": used,
             "left_percent": 100 - used,
-            "resets_at": last.get("resets_at") or last.get("resetsAt"),
-            "reset_in": reset_in(last.get("resets_at") or last.get("resetsAt"), now),
+            "resets_at": ra,
+            "reset_in": reset_in(ra, now),
             "captured_at": captured,
+            "pace": window_pace(wm, ra, used, now),
         })
     windows.sort(key=lambda x: WINDOW_ORDER.get(x["name"], 99))
 

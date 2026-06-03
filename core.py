@@ -286,6 +286,7 @@ DEFAULT_CONFIG = {
         "codex": {"weekday": 150, "weekend": 75},
     },
     "checkpoints": ["15:00", "20:00", "23:00"],
+    "plan_behind_threshold": 10,
     "telegram": {"enabled": True},
 }
 

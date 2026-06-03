@@ -75,13 +75,31 @@ def is_final_checkpoint(now: datetime, config: dict) -> bool:
     return (now.hour, now.minute) >= (lh, lm)
 
 
-def should_send(st: dict, now: datetime, config: dict, force: bool) -> bool:
+def plan_behind(pl: dict, threshold: float) -> list[tuple]:
+    """(tool, window) pairs whose weekly-scale utilization trails pace by more
+    than `threshold` points — the real "leaving plan on the table" signal."""
+    out = []
+    for tool, info in (pl or {}).items():
+        if not info.get("available"):
+            continue
+        for w in info["windows"]:
+            p = w.get("pace")
+            if p and not p["on_pace"] and p["behind_by"] >= threshold:
+                out.append((tool, w))
+    return out
+
+
+def should_send(st: dict, now: datetime, config: dict, force: bool,
+                pl: dict | None = None) -> bool:
     if force:
         return True
-    behind = any(t["mood"] in ("behind", "ontrack") for t in st["tools"].values())
-    if behind:
+    if any(t["mood"] in ("behind", "ontrack") for t in st["tools"].values()):
         return True
-    # both clearly on/over target: only send a celebratory summary at day's end
+    # under-using the real weekly plan, even if the daily token target was met
+    thr = config.get("plan_behind_threshold", 10)
+    if plan_behind(pl or {}, thr):
+        return True
+    # everything healthy: only send a summary at day's end
     return is_final_checkpoint(now, config)
 
 
@@ -91,7 +109,11 @@ def _plan_line(info: dict) -> str | None:
     parts = []
     for w in info["windows"]:
         rin = f" {w['reset_in']}" if w["reset_in"] else ""
-        parts.append(f"{w['name']} {w['left_percent']}%{rin}")
+        seg = f"{w['name']} {w['left_percent']}%{rin}"
+        p = w.get("pace")
+        if p and not p["on_pace"] and p["behind_by"] >= 5:
+            seg += f" ⚠落后{p['behind_by']:.0f}%"
+        parts.append(seg)
     flag = "⚠ " if info.get("stale") else ""
     return f"   plan {flag}" + " · ".join(parts)
 
@@ -144,10 +166,10 @@ def main(argv=None):
         return 0
     now = datetime.now().astimezone()
     st = core.status(now=now, config=config)
-    if not should_send(st, now, config, args.force):
+    pl = limits.plan_limits()
+    if not should_send(st, now, config, args.force, pl):
         print("[nudge] on pace, nothing to nudge")
         return 0
-    pl = limits.plan_limits()
     msg = build_message(st, now, pl)
     if args.dry_run:
         print(msg)

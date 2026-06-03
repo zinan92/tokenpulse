@@ -39,9 +39,21 @@ disk (refreshed ~hourly):
 ```
 
 We read the latest sample per window → `{name, used_percent, left_percent,
-resets_at, reset_in}`. **Requires CodexBar installed and running.** If it's
-absent or its data is stale (>3h old), the gadget degrades gracefully (shows
-"CodexBar 未运行" / a ⚠ stale flag) and the token tracker keeps working.
+resets_at, reset_in, pace}`. **Requires CodexBar installed and running.** If
+it's absent or its data is stale (>6h old), the gadget degrades gracefully
+(shows "CodexBar 未运行" / a ⚠ stale flag) and the token tracker keeps working.
+
+### Weekly-plan pace — the "use it all" signal
+
+For weekly-scale windows we compute a **pace**: by the fraction of the 7-day
+window elapsed you'd need that same fraction used to fully consume the
+allowance before reset. `behind_by` = points of allowance you're trailing
+(unused headroom you're on track to waste). The 5h *session* window is a burst
+limit you don't pace-fill, so it gets no pace. The nudge fires when any weekly
+window trails by more than `plan_behind_threshold` (default 10pts) — so it
+catches under-utilization of the *real* plan even on days you hit the token
+target. Example: `Codex weekly 97%left 4d9h ⚠落后34%` = 37% through the week
+but only 3% used.
 
 ## Day boundary
 

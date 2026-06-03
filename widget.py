@@ -143,11 +143,17 @@ class TokenPulseWidget:
             lbl.configure(text="plan: CodexBar 未运行", fg="#484f58")
             return
         parts = []
+        behind = False
         for w in info["windows"]:
             rin = f" {w['reset_in']}" if w["reset_in"] else ""
-            parts.append(f"{w['name'][:4]} {w['left_percent']}%{rin}")
+            seg = f"{w['name'][:4]} {w['left_percent']}%{rin}"
+            p = w.get("pace")
+            if p and not p["on_pace"] and p["behind_by"] >= 5:
+                seg += f"⚠{p['behind_by']:.0f}"
+                behind = True
+            parts.append(seg)
         prefix = "plan⚠ " if info.get("stale") else "plan "
-        color = "#d29922" if info.get("stale") else MUTED
+        color = "#d29922" if (info.get("stale") or behind) else MUTED
         lbl.configure(text=prefix + " · ".join(parts), fg=color)
 
     # ----------------------------------------------------------------- refresh

@@ -23,6 +23,7 @@ from datetime import datetime
 from pathlib import Path
 
 import core
+import limits
 import sessions
 
 SECRETS = Path.home() / "park-io" / "secrets"
@@ -84,7 +85,19 @@ def should_send(st: dict, now: datetime, config: dict, force: bool) -> bool:
     return is_final_checkpoint(now, config)
 
 
-def build_message(st: dict, now: datetime) -> str:
+def _plan_line(info: dict) -> str | None:
+    if not info or not info.get("available"):
+        return None
+    parts = []
+    for w in info["windows"]:
+        rin = f" {w['reset_in']}" if w["reset_in"] else ""
+        parts.append(f"{w['name']} {w['left_percent']}%{rin}")
+    flag = "⚠ " if info.get("stale") else ""
+    return f"   plan {flag}" + " · ".join(parts)
+
+
+def build_message(st: dict, now: datetime, pl: dict | None = None) -> str:
+    pl = pl or {}
     emoji = {"behind": "😴", "ontrack": "🙂", "ahead": "🔥", "done": "✅", "rocket": "🚀"}
     head = f"⏱ TokenPulse · {now.strftime('%H:%M')} · {WEEKDAY[now.weekday()]}"
     lines = [head]
@@ -97,6 +110,9 @@ def build_message(st: dict, now: datetime) -> str:
         else:
             pace_txt = f"pace {core.humanize(t['expected_by_now'])}"
             lines.append(f"{label} {e} {today}/{target} — need {core.humanize(t['remaining'])} ({pace_txt})")
+        pline = _plan_line(pl.get(tool, {}))
+        if pline:
+            lines.append(pline)
     c = st["combined"]
     lines.append(f"Σ {core.humanize(c['today'])}/{core.humanize(c['target'])} ({c['percent']:.0f}%)")
 
@@ -131,7 +147,8 @@ def main(argv=None):
     if not should_send(st, now, config, args.force):
         print("[nudge] on pace, nothing to nudge")
         return 0
-    msg = build_message(st, now)
+    pl = limits.plan_limits()
+    msg = build_message(st, now, pl)
     if args.dry_run:
         print(msg)
         return 0

@@ -11,6 +11,7 @@ import json
 from datetime import datetime
 
 import core
+import limits
 import sessions
 
 MOOD = {"behind": "😴", "ontrack": "🙂", "ahead": "🔥", "done": "✅", "rocket": "🚀"}
@@ -20,6 +21,24 @@ BAR_W = 24
 def _bar(frac: float) -> str:
     fill = int(round(min(1.0, frac) * BAR_W))
     return "█" * fill + "░" * (BAR_W - fill)
+
+
+def _win_label(wm) -> str:
+    if not wm:
+        return "?"
+    return f"{wm // 60}h" if wm < 1440 else f"{wm // 1440}d"
+
+
+def _print_limits(info: dict):
+    if not info.get("available"):
+        print(f"      plan: (CodexBar 未运行/无数据 — {info.get('reason', '?')})")
+        return
+    stale = " ⚠stale" if info.get("stale") else ""
+    parts = []
+    for w in info["windows"]:
+        rin = f" {w['reset_in']}" if w["reset_in"] else ""
+        parts.append(f"{w['name']} {w['left_percent']}%left{rin}")
+    print(f"      plan{stale}: " + "  ·  ".join(parts))
 
 
 def main(argv=None):
@@ -35,8 +54,9 @@ def main(argv=None):
         return 0
 
     st = core.status()
+    pl = limits.plan_limits()
     if args.json:
-        print(json.dumps(st, indent=2, default=str))
+        print(json.dumps({"status": st, "limits": pl}, indent=2, default=str))
         return 0
 
     now = datetime.fromisoformat(st["generated_at"])
@@ -52,6 +72,7 @@ def main(argv=None):
         else:
             line += f"  need {core.humanize(t['remaining'])} · pace {core.humanize(t['expected_by_now'])}"
         print(line)
+        _print_limits(pl.get(tool, {}))
     c = st["combined"]
     print(f"\nΣ  {core.humanize(c['today'])}/{core.humanize(c['target'])}  ({c['percent']:.0f}%)  "
           f"remaining {core.humanize(c['remaining'])}")

@@ -17,6 +17,7 @@ import tkinter as tk
 from datetime import datetime
 
 import core
+import limits
 import sessions
 
 # ----------------------------------------------------------------- appearance
@@ -103,10 +104,13 @@ class TokenPulseWidget:
         amount.pack(side="right")
         canvas = tk.Canvas(card, height=14, bg=TRACK, highlightthickness=0)
         canvas.pack(fill="x", pady=(3, 0))
-        for w in (card, top, name, canvas):
+        plan = tk.Label(card, text="", bg=BG, fg=MUTED, font=("Menlo", 8),
+                        anchor="w", justify="left")
+        plan.pack(fill="x")
+        for w in (card, top, name, canvas, plan):
             w.bind("<Button-1>", self._start_drag)
             w.bind("<B1-Motion>", self._on_drag)
-        return {"canvas": canvas, "amount": amount}
+        return {"canvas": canvas, "amount": amount, "plan": plan}
 
     def _draw_bar(self, tool: str, tdata: dict):
         b = self.bars[tool]
@@ -133,6 +137,19 @@ class TokenPulseWidget:
             tail = f"{emoji} {today}/{target}  need {core.humanize(tdata['remaining'])}"
         b["amount"].configure(text=tail, fg=color)
 
+    def _draw_limits(self, tool: str, info: dict):
+        lbl = self.bars[tool]["plan"]
+        if not info or not info.get("available"):
+            lbl.configure(text="plan: CodexBar 未运行", fg="#484f58")
+            return
+        parts = []
+        for w in info["windows"]:
+            rin = f" {w['reset_in']}" if w["reset_in"] else ""
+            parts.append(f"{w['name'][:4]} {w['left_percent']}%{rin}")
+        prefix = "plan⚠ " if info.get("stale") else "plan "
+        color = "#d29922" if info.get("stale") else MUTED
+        lbl.configure(text=prefix + " · ".join(parts), fg=color)
+
     # ----------------------------------------------------------------- refresh
     def kick_refresh(self):
         threading.Thread(target=self._worker, daemon=True).start()
@@ -141,25 +158,28 @@ class TokenPulseWidget:
         try:
             st = core.status(config=self.config)
             sug = sessions.suggestion(days=self.config.get("suggest_days", 5))
-            self.results.put(("ok", st, sug))
+            pl = limits.plan_limits()
+            self.results.put(("ok", (st, sug, pl)))
         except Exception as exc:  # never let the worker kill the UI
-            self.results.put(("err", str(exc), None))
+            self.results.put(("err", (str(exc), None, None)))
 
     def _poll_results(self):
         try:
             while True:
-                kind, a, b = self.results.get_nowait()
+                kind, payload = self.results.get_nowait()
                 if kind == "ok":
-                    self._render(a, b)
+                    self._render(*payload)
                 else:
-                    self.updated_lbl.configure(text=f"⚠ {a}")
+                    self.updated_lbl.configure(text=f"⚠ {payload[0]}")
         except queue.Empty:
             pass
         self.root.after(500, self._poll_results)
 
-    def _render(self, st: dict, sug: dict | None):
+    def _render(self, st: dict, sug: dict | None, pl: dict | None = None):
+        pl = pl or {}
         for tool in ("claude", "codex"):
             self._draw_bar(tool, st["tools"][tool])
+            self._draw_limits(tool, pl.get(tool, {}))
         c = st["combined"]
         self.combined_lbl.configure(
             text=f"Σ {core.humanize(c['today'])}/{core.humanize(c['target'])} ({c['percent']:.0f}%)")
@@ -177,7 +197,7 @@ class TokenPulseWidget:
         self.root.update_idletasks()
         w = 290
         sw = self.root.winfo_screenwidth()
-        self.root.geometry(f"{w}x150+{sw - w - 24}+48")
+        self.root.geometry(f"{w}x196+{sw - w - 24}+48")
 
     def _start_drag(self, e):
         self._drag = (e.x_root - self.root.winfo_x(), e.y_root - self.root.winfo_y())

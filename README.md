@@ -24,6 +24,27 @@ reproduces CodexBar's "today ~200M" to within rounding):
   summing it would over-count), deduped by session UUID across `sessions/` and
   `archived_sessions/`.
 
+## Real plan quota (remaining %) — via CodexBar
+
+Token counts are a self-imposed proxy; the *actual* subscription windows
+(session 5h, weekly, opus weekly) are the true "am I using my plan" signal.
+Those percentages are **not** in any local Claude file — Anthropic only exposes
+them through an OAuth usage endpoint. Rather than extract OAuth tokens from the
+Keychain and call an undocumented endpoint ourselves, `limits.py` **piggybacks
+on CodexBar**, which already does that auth + probing and writes the results to
+disk (refreshed ~hourly):
+
+```
+~/Library/Application Support/com.steipete.codexbar/history/{claude,codex}.json
+```
+
+We read the latest sample per window → `{name, used_percent, left_percent,
+resets_at, reset_in}`. **Requires CodexBar installed and running.** If it's
+absent or its data is stale (>3h old), the gadget degrades gracefully (shows
+"CodexBar 未运行" / a ⚠ stale flag) and the token tracker keeps working.
+
+## Day boundary
+
 Day boundary is **local** by default (your real day, UTC+8) — what "today's
 goal" means to a human, and what the pace window aligns to. A naïve UTC-date
 filter happened to match CodexBar's "~200M" at one afternoon reading; that's a
@@ -36,6 +57,7 @@ it, set `"day_boundary": "utc"` in `config.json` and compare.
 | File | What it is |
 |------|-----------|
 | `core.py` | The engine: extractors + targets + pace/mood. Pure stdlib, tested. |
+| `limits.py` | Real plan quota (session/weekly/opus % left + reset) via CodexBar feed. |
 | `sessions.py` | Recent Claude+Codex sessions (last 5 days) → "go resume this". |
 | `widget.py` | **Tkinter** always-on-top desktop widget (~30–50MB, no Chromium). |
 | `nudge.py` | Telegram push at checkpoints when behind pace (actionable). |

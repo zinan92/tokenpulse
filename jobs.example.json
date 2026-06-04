@@ -1,0 +1,34 @@
+[
+  {
+    "name": "market-breadth",
+    "tool": "claude",
+    "cooldown_hours": 8,
+    "cwd": "~/work",
+    "allowed_tools": "Read,Write,Glob,Grep,WebSearch,WebFetch",
+    "prompt": "Use the market-breadth-analyzer / breadth-chart-analyst approach to produce today's US market breadth read. Write a concise dated briefing to ~/work/notes/breadth-<date>.md."
+  },
+  {
+    "name": "news-digest",
+    "tool": "claude",
+    "cooldown_hours": 6,
+    "cwd": "~/work",
+    "allowed_tools": "Read,Write,Glob,Grep,WebSearch,WebFetch",
+    "prompt": "Produce a market & tech news digest of the last 12h with why-it-matters notes. Write to ~/work/notes/news-<date>.md."
+  },
+  {
+    "name": "repo-readme-sweep",
+    "tool": "codex",
+    "cooldown_hours": 12,
+    "cwd": "~/work",
+    "sandbox": "workspace-write",
+    "prompt": "Find one repo under ~/work that lacks a good README, study it, and write a capability-first README.md for it. Report which repo you chose and what you wrote."
+  },
+  {
+    "name": "deep-research-queue",
+    "tool": "claude",
+    "cooldown_hours": 10,
+    "cwd": "~/work",
+    "allowed_tools": "Read,Write,Glob,Grep,WebSearch,WebFetch",
+    "prompt": "Pick the next unresearched topic from ~/work/notes/research-topics.txt (create it with a few topics if missing), do a multi-source deep dive, and write a cited report to ~/work/notes/research/<slug>.md."
+  }
+]

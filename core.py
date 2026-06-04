@@ -288,6 +288,13 @@ DEFAULT_CONFIG = {
     "checkpoints": ["15:00", "20:00", "23:00"],
     "plan_behind_threshold": 10,
     "telegram": {"enabled": True},
+    "furnace": {
+        "enabled": False,
+        "max_jobs_per_day": 12,
+        "max_runtime_minutes": 30,
+        "default_cwd": "~/work",
+        "telegram": True,
+    },
 }
 
 

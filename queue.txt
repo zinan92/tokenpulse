@@ -1,0 +1,7 @@
+# TokenPulse furnace — directed queue. One prompt per line.
+# Blank lines and #comments are ignored. The furnace runs the top line first,
+# then removes it. Prefix with `claude:` or `codex:` to pin the tool.
+#
+# Examples (delete these, add your own):
+# claude: Research the current state of X and write a briefing to ~/work/notes/x.md
+# codex: Audit ~/work/some-repo for dead code and write findings to FINDINGS.md

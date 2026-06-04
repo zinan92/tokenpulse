@@ -125,8 +125,13 @@ def test_codex_dedupes_same_session_uuid(tmp_path, monkeypatch):
 def test_weekday_vs_weekend_target():
     weekday = datetime(2026, 6, 2).date()  # Tuesday
     weekend = datetime(2026, 6, 6).date()  # Saturday
+    # default config: flat 150M every day (no weekend reduction)
     assert core.target_for(weekday, CFG, "claude") == 150 * core.MILLION
-    assert core.target_for(weekend, CFG, "claude") == 75 * core.MILLION
+    assert core.target_for(weekend, CFG, "claude") == 150 * core.MILLION
+    # mechanism still supports a different weekend target when configured
+    custom = {"targets": {"claude": {"weekday": 100, "weekend": 50}}}
+    assert core.target_for(weekday, custom, "claude") == 100 * core.MILLION
+    assert core.target_for(weekend, custom, "claude") == 50 * core.MILLION
 
 
 def test_pace_behind_and_ahead():

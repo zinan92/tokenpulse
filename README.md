@@ -5,10 +5,10 @@ plans. CodexBar is the odometer (raw token numbers); TokenPulse is the coach —
 it frames those numbers against a **daily target**, shows **pace**, and
 **nudges you with something concrete to go build** when you're behind.
 
-Goal it tracks: burn **150M tokens/day per plan on weekdays** (300M combined),
-**75M/day per plan on weekends** (150M combined). The whole point is to *not
-leave tokens on the table* — when you're behind, it tells you which recent
-session to jump back into.
+Goal it tracks: burn **150M tokens/day per plan, every day** (300M combined,
+Claude + Codex). The whole point is to *not leave tokens on the table* — when
+you're behind, it tells you which recent session to jump back into. (Targets are
+per-tool and weekday/weekend-aware in config, currently set flat at 150M.)
 
 ## How it counts tokens
 

@@ -282,8 +282,8 @@ DEFAULT_CONFIG = {
     "day_boundary": "local",
     "active_window": {"start": "09:00", "end": "23:59"},
     "targets": {
-        "claude": {"weekday": 150, "weekend": 75},
-        "codex": {"weekday": 150, "weekend": 75},
+        "claude": {"weekday": 150, "weekend": 150},
+        "codex": {"weekday": 150, "weekend": 150},
     },
     "checkpoints": ["15:00", "20:00", "23:00"],
     "plan_behind_threshold": 10,

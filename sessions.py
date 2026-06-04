@@ -159,7 +159,7 @@ def recent_sessions(days: int = 5, limit: int = 8) -> list[dict]:
     return merged[:limit]
 
 
-def suggestion(days: int = 5, min_age_seconds: int = 300) -> dict | None:
+def suggestion(days: int = 5, min_age_seconds: int = 600) -> dict | None:
     """A single session to nudge the user back into.
 
     Skips the currently-active session (anything touched within

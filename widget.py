@@ -107,10 +107,13 @@ class TokenPulseWidget:
         plan = tk.Label(card, text="", bg=BG, fg=MUTED, font=("Menlo", 8),
                         anchor="w", justify="left")
         plan.pack(fill="x")
-        for w in (card, top, name, canvas, plan):
+        # weekly-plan mini-bar: fill = used%, marker = where you should be
+        wk = tk.Canvas(card, height=7, bg=TRACK, highlightthickness=0)
+        wk.pack(fill="x", pady=(1, 0))
+        for w in (card, top, name, canvas, plan, wk):
             w.bind("<Button-1>", self._start_drag)
             w.bind("<B1-Motion>", self._on_drag)
-        return {"canvas": canvas, "amount": amount, "plan": plan}
+        return {"canvas": canvas, "amount": amount, "plan": plan, "weekly": wk}
 
     def _draw_bar(self, tool: str, tdata: dict):
         b = self.bars[tool]
@@ -139,11 +142,14 @@ class TokenPulseWidget:
 
     def _draw_limits(self, tool: str, info: dict):
         lbl = self.bars[tool]["plan"]
+        wk_canvas: tk.Canvas = self.bars[tool]["weekly"]
+        wk_canvas.delete("all")
         if not info or not info.get("available"):
             lbl.configure(text="plan: CodexBar 未运行", fg="#484f58")
             return
         parts = []
         behind = False
+        weekly_win = None
         for w in info["windows"]:
             rin = f" {w['reset_in']}" if w["reset_in"] else ""
             seg = f"{w['name'][:4]} {w['left_percent']}%{rin}"
@@ -151,10 +157,34 @@ class TokenPulseWidget:
             if p and not p["on_pace"] and p["behind_by"] >= 5:
                 seg += f"⚠{p['behind_by']:.0f}"
                 behind = True
+            if w["name"] == "weekly":
+                weekly_win = w
             parts.append(seg)
         prefix = "plan⚠ " if info.get("stale") else "plan "
         color = "#d29922" if (info.get("stale") or behind) else MUTED
         lbl.configure(text=prefix + " · ".join(parts), fg=color)
+        self._draw_weekly(wk_canvas, weekly_win)
+
+    def _draw_weekly(self, canvas: tk.Canvas, w: dict | None):
+        """Mini-bar for the weekly plan: fill = used%, white tick = pace target.
+        The gap between fill and tick is the allowance you're on track to waste."""
+        canvas.update_idletasks()
+        width = canvas.winfo_width()
+        if width <= 1:
+            width = 260
+        h = 7
+        canvas.create_rectangle(0, 0, width, h, fill=TRACK, outline="")
+        if not w:
+            return
+        used = max(0, min(100, w.get("used_percent", 0)))
+        p = w.get("pace")
+        on_pace = bool(p and p["on_pace"])
+        fill = "#3fb950" if on_pace else "#d29922"
+        if used > 0:
+            canvas.create_rectangle(0, 0, max(2, int(width * used / 100)), h, fill=fill, outline="")
+        if p:
+            x = int(width * min(100, p["expected_used_percent"]) / 100)
+            canvas.create_line(x, 0, x, h, fill="#ffffff", width=1)
 
     # ----------------------------------------------------------------- refresh
     def kick_refresh(self):
@@ -203,7 +233,7 @@ class TokenPulseWidget:
         self.root.update_idletasks()
         w = 290
         sw = self.root.winfo_screenwidth()
-        self.root.geometry(f"{w}x196+{sw - w - 24}+48")
+        self.root.geometry(f"{w}x218+{sw - w - 24}+48")
 
     def _start_drag(self, e):
         self._drag = (e.x_root - self.root.winfo_x(), e.y_root - self.root.winfo_y())

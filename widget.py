@@ -137,32 +137,48 @@ class TokenPulseWidget:
         threading.Thread(target=self._worker, daemon=True).start()
 
     def _worker(self):
+        # Post limits first (fast) so the bars show immediately, then the heavy
+        # 30-day cost scan fills in the cost/token lines.
         try:
             pl = limits.plan_limits()
+            self.results.put(("limits", pl))
+        except Exception as exc:  # noqa: BLE001
+            self.results.put(("err", (str(exc), None)))
+            return
+        try:
             summaries = {t: cost.usage_summary(t) for t in ("claude", "codex")}
-            self.results.put(("ok", (pl, summaries)))
-        except Exception as exc:  # never kill the UI
+            self.results.put(("cost", summaries))
+        except Exception as exc:  # noqa: BLE001
             self.results.put(("err", (str(exc), None)))
 
     def _poll_results(self):
         try:
             while True:
                 kind, payload = self.results.get_nowait()
-                if kind == "ok":
-                    self._render(*payload)
+                if kind == "limits":
+                    self._render_limits(payload)
+                elif kind == "cost":
+                    self._render_cost(payload)
+                    self.root.after(self.refresh_ms, self.kick_refresh)
                 else:
                     self.updated_lbl.configure(text=f"⚠ {payload[0][:30]}")
         except queue.Empty:
             pass
         self.root.after(500, self._poll_results)
 
-    def _render(self, pl: dict, summaries: dict):
+    def _render_limits(self, pl: dict):
         for tool in ("claude", "codex"):
             info = pl.get(tool, {})
             avail = info.get("available")
             for wname in ("session", "weekly"):
                 w = limits.window(info, wname) if avail else None
                 self._draw_window(tool, wname, w)
+        stale = any(pl.get(t, {}).get("stale") for t in ("claude", "codex"))
+        flag = " ⚠stale" if stale else ""
+        self.updated_lbl.configure(text=f"{datetime.now().strftime('%H:%M')}{flag}")
+
+    def _render_cost(self, summaries: dict):
+        for tool in ("claude", "codex"):
             s = summaries.get(tool, {})
             c = self.cards[tool]
             c["cost"].configure(
@@ -171,10 +187,6 @@ class TokenPulseWidget:
             c["tok"].configure(
                 text=f"30d {cost.humanize_tokens(s.get('tokens_30d', 0))} tok   "
                      f"latest {cost.humanize_tokens(s.get('latest_tokens', 0))}")
-        stale = any(pl.get(t, {}).get("stale") for t in ("claude", "codex"))
-        flag = " ⚠stale" if stale else ""
-        self.updated_lbl.configure(text=f"{datetime.now().strftime('%H:%M')}{flag}")
-        self.root.after(self.refresh_ms, self.kick_refresh)
 
     # -------------------------------------------------------------- placement
     def _place_top_right(self):

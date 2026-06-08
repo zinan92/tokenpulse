@@ -1,13 +1,14 @@
-"""TokenPulse desktop widget — a lightweight always-on-top quota coach.
+"""TokenPulse desktop widget — a trimmed CodexBar mirror.
 
-Pure-stdlib Tkinter (no Chromium, ~30-50MB resident). Frameless, pinned to the
-top-right of the desktop as a constant reminder: how far each plan is from its
-daily token target, and one recent session to jump back into.
+Per tool (Claude, Codex only): Session % + reset, Weekly % + reset, Today cost,
+30d cost, 30d tokens, Latest tokens. No Spark windows, no bar chart, no Gemini.
 
-Refresh runs in a worker thread so the file scan never freezes the UI.
+Data: limits.py (session/weekly via CodexBar's history feed) + cost.py (cost &
+token aggregates priced at models.dev API rates). Pure-stdlib Tkinter, frameless,
+always-on-top. Refresh runs in a worker thread; the heavy 30d cost scan is
+TTL-cached in cost.py.
 
-Run:  python3 widget.py
-Quit: press Esc, or right-click -> Quit. Drag anywhere to move.
+Run: python3 widget.py   ·   Quit: Esc / right-click → Quit   ·   Drag to move.
 """
 from __future__ import annotations
 
@@ -16,33 +17,33 @@ import threading
 import tkinter as tk
 from datetime import datetime
 
-import core
+import cost
 import limits
-import sessions
-
-# ----------------------------------------------------------------- appearance
 
 BG = "#0d1117"
-CARD = "#161b22"
 FG = "#e6edf3"
 MUTED = "#8b949e"
+DIM = "#6e7681"
 TRACK = "#21262d"
+TEAL = "#2dd4bf"
+AMBER = "#d29922"
+RED = "#f85149"
 
-MOOD = {
-    "behind": ("#f85149", "😴"),
-    "ontrack": ("#d29922", "🙂"),
-    "ahead": ("#3fb950", "🔥"),
-    "done": ("#2ea043", "✅"),
-    "rocket": ("#a371f7", "🚀"),
-}
-TOOL_LABEL = {"claude": "Claude", "codex": "Codex "}
-REFRESH_MS_DEFAULT = 180_000  # 3 min
+TOOL_LABEL = {"claude": "Claude", "codex": "Codex"}
+
+
+def _bar_color(left_pct: float) -> str:
+    if left_pct <= 10:
+        return RED
+    if left_pct <= 25:
+        return AMBER
+    return TEAL
 
 
 class TokenPulseWidget:
     def __init__(self, config: dict):
         self.config = config
-        self.refresh_ms = int(config.get("widget", {}).get("refresh_seconds", 180) * 1000) or REFRESH_MS_DEFAULT
+        self.refresh_ms = int(config.get("widget", {}).get("refresh_seconds", 180) * 1000) or 180_000
         self.results: "queue.Queue[tuple]" = queue.Queue()
         self._drag = (0, 0)
 
@@ -51,34 +52,24 @@ class TokenPulseWidget:
         self.root.overrideredirect(True)
         self.root.attributes("-topmost", True)
         try:
-            self.root.attributes("-alpha", 0.96)
+            self.root.attributes("-alpha", 0.97)
         except tk.TclError:
             pass
         self.root.configure(bg=BG)
 
-        self.frame = tk.Frame(self.root, bg=BG, padx=12, pady=10)
+        self.frame = tk.Frame(self.root, bg=BG, padx=14, pady=11)
         self.frame.pack(fill="both", expand=True)
 
         header = tk.Frame(self.frame, bg=BG)
         header.pack(fill="x")
-        tk.Label(header, text="⏱ TokenPulse", bg=BG, fg=FG,
-                 font=("Menlo", 12, "bold")).pack(side="left")
-        self.combined_lbl = tk.Label(header, text="", bg=BG, fg=MUTED, font=("Menlo", 10))
-        self.combined_lbl.pack(side="right")
+        tk.Label(header, text="⏱ TokenPulse", bg=BG, fg=FG, font=("Menlo", 12, "bold")).pack(side="left")
+        self.updated_lbl = tk.Label(header, text="", bg=BG, fg=DIM, font=("Menlo", 8))
+        self.updated_lbl.pack(side="right")
 
-        self.bars: dict[str, dict] = {}
+        self.cards: dict[str, dict] = {}
         for tool in ("claude", "codex"):
-            self.bars[tool] = self._make_bar(tool)
+            self.cards[tool] = self._make_card(tool)
 
-        self.suggest_lbl = tk.Label(self.frame, text="", bg=BG, fg=MUTED,
-                                    font=("Menlo", 9), justify="left", anchor="w",
-                                    wraplength=260)
-        self.suggest_lbl.pack(fill="x", pady=(8, 0))
-        self.updated_lbl = tk.Label(self.frame, text="", bg=BG, fg="#484f58",
-                                    font=("Menlo", 8), anchor="w")
-        self.updated_lbl.pack(fill="x")
-
-        # interactions
         for w in (self.root, self.frame, header):
             w.bind("<Button-1>", self._start_drag)
             w.bind("<B1-Motion>", self._on_drag)
@@ -92,99 +83,54 @@ class TokenPulseWidget:
         self.kick_refresh()
         self.root.after(200, self._poll_results)
 
-    # ---------------------------------------------------------------- widgets
-    def _make_bar(self, tool: str) -> dict:
+    # ------------------------------------------------------------------ layout
+    def _make_card(self, tool: str) -> dict:
         card = tk.Frame(self.frame, bg=BG)
-        card.pack(fill="x", pady=(8, 0))
-        top = tk.Frame(card, bg=BG)
-        top.pack(fill="x")
-        name = tk.Label(top, text=TOOL_LABEL[tool], bg=BG, fg=FG, font=("Menlo", 10, "bold"))
-        name.pack(side="left")
-        amount = tk.Label(top, text="…", bg=BG, fg=MUTED, font=("Menlo", 10))
-        amount.pack(side="right")
-        canvas = tk.Canvas(card, height=14, bg=TRACK, highlightthickness=0)
-        canvas.pack(fill="x", pady=(3, 0))
-        plan = tk.Label(card, text="", bg=BG, fg=MUTED, font=("Menlo", 8),
-                        anchor="w", justify="left")
-        plan.pack(fill="x")
-        # weekly-plan mini-bar: fill = used%, marker = where you should be
-        wk = tk.Canvas(card, height=7, bg=TRACK, highlightthickness=0)
-        wk.pack(fill="x", pady=(1, 0))
-        for w in (card, top, name, canvas, plan, wk):
+        card.pack(fill="x", pady=(10, 0))
+        name = tk.Label(card, text=TOOL_LABEL[tool], bg=BG, fg=FG, font=("Menlo", 11, "bold"),
+                        anchor="w")
+        name.pack(fill="x")
+
+        rows = {}
+        for wname in ("session", "weekly"):
+            row = tk.Frame(card, bg=BG)
+            row.pack(fill="x", pady=(2, 0))
+            tk.Label(row, text=wname[:4].title(), bg=BG, fg=MUTED, font=("Menlo", 9),
+                     width=5, anchor="w").pack(side="left")
+            canvas = tk.Canvas(row, height=10, width=120, bg=TRACK, highlightthickness=0)
+            canvas.pack(side="left", padx=(2, 6))
+            txt = tk.Label(row, text="…", bg=BG, fg=MUTED, font=("Menlo", 9), anchor="w")
+            txt.pack(side="left")
+            rows[wname] = {"canvas": canvas, "txt": txt, "row": row}
+
+        cost_lbl = tk.Label(card, text="", bg=BG, fg=FG, font=("Menlo", 9), anchor="w")
+        cost_lbl.pack(fill="x", pady=(3, 0))
+        tok_lbl = tk.Label(card, text="", bg=BG, fg=MUTED, font=("Menlo", 9), anchor="w")
+        tok_lbl.pack(fill="x")
+
+        widgets = [card, name, cost_lbl, tok_lbl] + [r["row"] for r in rows.values()]
+        for w in widgets:
             w.bind("<Button-1>", self._start_drag)
             w.bind("<B1-Motion>", self._on_drag)
-        return {"canvas": canvas, "amount": amount, "plan": plan, "weekly": wk}
+        return {"rows": rows, "cost": cost_lbl, "tok": tok_lbl}
 
-    def _draw_bar(self, tool: str, tdata: dict):
-        b = self.bars[tool]
-        canvas: tk.Canvas = b["canvas"]
+    def _draw_window(self, tool: str, wname: str, w: dict | None):
+        r = self.cards[tool]["rows"][wname]
+        canvas: tk.Canvas = r["canvas"]
         canvas.delete("all")
-        canvas.update_idletasks()
-        w = canvas.winfo_width() or 260
-        h = 14
-        color, emoji = MOOD.get(tdata["mood"], (MUTED, "•"))
-        frac = min(1.0, tdata["today"] / tdata["target"]) if tdata["target"] else 1.0
-        canvas.create_rectangle(0, 0, w, h, fill=TRACK, outline="")
-        if frac > 0:
-            canvas.create_rectangle(0, 0, max(2, int(w * frac)), h, fill=color, outline="")
-        # pace marker
-        pf = tdata.get("active_fraction", 0)
-        if 0 < pf < 1:
-            x = int(w * pf)
-            canvas.create_line(x, 0, x, h, fill="#ffffff", width=1)
-        today = core.humanize(tdata["today"])
-        target = core.humanize(tdata["target"])
-        if tdata["hit"]:
-            tail = f"{emoji} {today}/{target} ({tdata['percent']:.0f}%)"
-        else:
-            tail = f"{emoji} {today}/{target}  need {core.humanize(tdata['remaining'])}"
-        b["amount"].configure(text=tail, fg=color)
-
-    def _draw_limits(self, tool: str, info: dict):
-        lbl = self.bars[tool]["plan"]
-        wk_canvas: tk.Canvas = self.bars[tool]["weekly"]
-        wk_canvas.delete("all")
-        if not info or not info.get("available"):
-            lbl.configure(text="plan: CodexBar 未运行", fg="#484f58")
-            return
-        parts = []
-        behind = False
-        weekly_win = None
-        for w in info["windows"]:
-            rin = f" {w['reset_in']}" if w["reset_in"] else ""
-            seg = f"{w['name'][:4]} {w['left_percent']}%{rin}"
-            p = w.get("pace")
-            if p and not p["on_pace"] and p["behind_by"] >= 5:
-                seg += f"⚠{p['behind_by']:.0f}"
-                behind = True
-            if w["name"] == "weekly":
-                weekly_win = w
-            parts.append(seg)
-        prefix = "plan⚠ " if info.get("stale") else "plan "
-        color = "#d29922" if (info.get("stale") or behind) else MUTED
-        lbl.configure(text=prefix + " · ".join(parts), fg=color)
-        self._draw_weekly(wk_canvas, weekly_win)
-
-    def _draw_weekly(self, canvas: tk.Canvas, w: dict | None):
-        """Mini-bar for the weekly plan: fill = used%, white tick = pace target.
-        The gap between fill and tick is the allowance you're on track to waste."""
-        canvas.update_idletasks()
         width = canvas.winfo_width()
         if width <= 1:
-            width = 260
-        h = 7
+            width = 120
+        h = 10
         canvas.create_rectangle(0, 0, width, h, fill=TRACK, outline="")
         if not w:
+            r["txt"].configure(text="—", fg=DIM)
             return
-        used = max(0, min(100, w.get("used_percent", 0)))
-        p = w.get("pace")
-        on_pace = bool(p and p["on_pace"])
-        fill = "#3fb950" if on_pace else "#d29922"
-        if used > 0:
-            canvas.create_rectangle(0, 0, max(2, int(width * used / 100)), h, fill=fill, outline="")
-        if p:
-            x = int(width * min(100, p["expected_used_percent"]) / 100)
-            canvas.create_line(x, 0, x, h, fill="#ffffff", width=1)
+        left = w["left_percent"]
+        color = _bar_color(left)
+        canvas.create_rectangle(0, 0, max(2, int(width * left / 100)), h, fill=color, outline="")
+        rin = f"  {w['reset_in']}" if w["reset_in"] else ""
+        r["txt"].configure(text=f"{left}% left{rin}", fg=MUTED)
 
     # ----------------------------------------------------------------- refresh
     def kick_refresh(self):
@@ -192,12 +138,11 @@ class TokenPulseWidget:
 
     def _worker(self):
         try:
-            st = core.status(config=self.config)
-            sug = sessions.suggestion(days=self.config.get("suggest_days", 5))
             pl = limits.plan_limits()
-            self.results.put(("ok", (st, sug, pl)))
-        except Exception as exc:  # never let the worker kill the UI
-            self.results.put(("err", (str(exc), None, None)))
+            summaries = {t: cost.usage_summary(t) for t in ("claude", "codex")}
+            self.results.put(("ok", (pl, summaries)))
+        except Exception as exc:  # never kill the UI
+            self.results.put(("err", (str(exc), None)))
 
     def _poll_results(self):
         try:
@@ -206,34 +151,37 @@ class TokenPulseWidget:
                 if kind == "ok":
                     self._render(*payload)
                 else:
-                    self.updated_lbl.configure(text=f"⚠ {payload[0]}")
+                    self.updated_lbl.configure(text=f"⚠ {payload[0][:30]}")
         except queue.Empty:
             pass
         self.root.after(500, self._poll_results)
 
-    def _render(self, st: dict, sug: dict | None, pl: dict | None = None):
-        pl = pl or {}
+    def _render(self, pl: dict, summaries: dict):
         for tool in ("claude", "codex"):
-            self._draw_bar(tool, st["tools"][tool])
-            self._draw_limits(tool, pl.get(tool, {}))
-        c = st["combined"]
-        self.combined_lbl.configure(
-            text=f"Σ {core.humanize(c['today'])}/{core.humanize(c['target'])} ({c['percent']:.0f}%)")
-        if sug:
-            snip = f"\n  {sug['snippet']}" if sug.get("snippet") else ""
-            self.suggest_lbl.configure(
-                text=f"▶ resume [{sug['tool']}] {sug['name']} · {sug['age']}{snip}")
-        else:
-            self.suggest_lbl.configure(text="▶ no recent sessions — start something!")
-        self.updated_lbl.configure(text=f"updated {datetime.now().strftime('%H:%M:%S')}")
+            info = pl.get(tool, {})
+            avail = info.get("available")
+            for wname in ("session", "weekly"):
+                w = limits.window(info, wname) if avail else None
+                self._draw_window(tool, wname, w)
+            s = summaries.get(tool, {})
+            c = self.cards[tool]
+            c["cost"].configure(
+                text=f"Today {cost.humanize_cost(s.get('cost_today', 0))}   "
+                     f"30d {cost.humanize_cost(s.get('cost_30d', 0))}")
+            c["tok"].configure(
+                text=f"30d {cost.humanize_tokens(s.get('tokens_30d', 0))} tok   "
+                     f"latest {cost.humanize_tokens(s.get('latest_tokens', 0))}")
+        stale = any(pl.get(t, {}).get("stale") for t in ("claude", "codex"))
+        flag = " ⚠stale" if stale else ""
+        self.updated_lbl.configure(text=f"{datetime.now().strftime('%H:%M')}{flag}")
         self.root.after(self.refresh_ms, self.kick_refresh)
 
     # -------------------------------------------------------------- placement
     def _place_top_right(self):
         self.root.update_idletasks()
-        w = 290
+        w = 300
         sw = self.root.winfo_screenwidth()
-        self.root.geometry(f"{w}x218+{sw - w - 24}+48")
+        self.root.geometry(f"{w}x250+{sw - w - 24}+48")
 
     def _start_drag(self, e):
         self._drag = (e.x_root - self.root.winfo_x(), e.y_root - self.root.winfo_y())
@@ -252,6 +200,7 @@ class TokenPulseWidget:
 
 
 def main():
+    import core
     TokenPulseWidget(core.load_config()).run()
 
 

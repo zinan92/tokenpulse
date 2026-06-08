@@ -1,0 +1,267 @@
+"""Cost + token aggregates for the CodexBar-mirror widget.
+
+Reproduces CodexBar's "Today cost / 30d cost / 30d tokens / Latest tokens" by
+pricing tokens at API rates from the SAME table CodexBar uses:
+  ~/Library/Caches/codexbar/model-pricing/models-dev-v1.json
+(models.dev catalog: per-model {input, output, cache_read, cache_write} $/Mtok).
+
+Cost = Σ over priced units of  input×in + cache_creation×cache_write +
+cache_read×cache_read + output×output  (per model, /1e6).
+
+Heavy 30-day scans are TTL-cached (the widget refreshes often; 30d barely moves).
+Pure stdlib.
+"""
+from __future__ import annotations
+
+import glob
+import json
+import os
+import time
+from datetime import datetime, timedelta, timezone
+
+import core  # reuse _codex_session_uuid, _parse_ts, dedup ideas
+
+PRICE_FILE = os.path.expanduser(
+    "~/Library/Caches/codexbar/model-pricing/models-dev-v1.json"
+)
+MILLION = 1_000_000
+_CACHE: dict = {}
+DEFAULT_TTL = 600  # seconds
+
+
+# ----------------------------------------------------------------- price table
+
+def _load_prices() -> dict:
+    """model-id -> {input, output, cache_read, cache_write} ($/Mtok)."""
+    if "prices" in _CACHE:
+        return _CACHE["prices"]
+    prices: dict[str, dict] = {}
+    try:
+        cat = json.load(open(PRICE_FILE, encoding="utf-8"))["catalog"]["providers"]
+        for pid in ("anthropic", "openai"):
+            for mid, m in cat.get(pid, {}).get("models", {}).items():
+                if isinstance(m.get("cost"), dict):
+                    prices[mid] = m["cost"]
+    except (OSError, ValueError, KeyError):
+        pass
+    _CACHE["prices"] = prices
+    return prices
+
+
+def price_for(model: str, prices: dict | None = None) -> dict:
+    """Look up a model's rates: exact → strip trailing -date → prefix match."""
+    if not model:
+        return {}
+    prices = prices if prices is not None else _load_prices()
+    if model in prices:
+        return prices[model]
+    # strip a trailing -YYYYMMDD
+    parts = model.rsplit("-", 1)
+    if len(parts) == 2 and parts[1].isdigit() and len(parts[1]) == 8:
+        if parts[0] in prices:
+            return prices[parts[0]]
+    # longest-prefix match
+    best, blen = {}, 0
+    for mid, cost in prices.items():
+        if (model.startswith(mid) or mid.startswith(model)) and len(mid) > blen:
+            best, blen = cost, len(mid)
+    return best
+
+
+def _cost(rates: dict, inp: int, cache_create: int, cache_read: int, out: int) -> float:
+    if not rates:
+        return 0.0
+    return (
+        inp * rates.get("input", 0)
+        + cache_create * rates.get("cache_write", rates.get("input", 0))
+        + cache_read * rates.get("cache_read", 0)
+        + out * rates.get("output", 0)
+    ) / MILLION
+
+
+# ------------------------------------------------------------------- Claude
+
+def _claude_summary(now: datetime) -> dict:
+    prices = _load_prices()
+    today = now.astimezone().date()
+    floor_day = today - timedelta(days=30)
+    floor_mtime = (datetime.combine(floor_day, datetime.min.time()).astimezone()
+                   - timedelta(days=1)).timestamp()
+    seen: set = set()
+    cost_today = cost_30d = 0.0
+    tok_today = tok_30d = 0
+    # latest session = most-recently-modified transcript file
+    sessions: dict[str, dict] = {}  # path -> {mtime, tokens}
+    for f in glob.glob(os.path.expanduser("~/.claude/projects/**/*.jsonl"), recursive=True):
+        try:
+            mt = os.path.getmtime(f)
+        except OSError:
+            continue
+        if mt < floor_mtime:
+            continue
+        try:
+            for line in open(f, encoding="utf-8"):
+                try:
+                    d = json.loads(line)
+                except (ValueError, TypeError):
+                    continue
+                msg = d.get("message")
+                if not isinstance(msg, dict):
+                    continue
+                u = msg.get("usage")
+                if not isinstance(u, dict):
+                    continue
+                mid = msg.get("id")
+                key = (mid, d.get("requestId"))
+                if mid and key in seen:
+                    continue
+                if mid:
+                    seen.add(key)
+                dt = core._parse_ts(d.get("timestamp"))
+                if dt is None:
+                    continue
+                ld = dt.astimezone().date()
+                if ld < floor_day:
+                    continue
+                inp = u.get("input_tokens", 0) or 0
+                cc = u.get("cache_creation_input_tokens", 0) or 0
+                cr = u.get("cache_read_input_tokens", 0) or 0
+                out = u.get("output_tokens", 0) or 0
+                toks = inp + cc + cr + out
+                c = _cost(price_for(msg.get("model", ""), prices), inp, cc, cr, out)
+                cost_30d += c
+                tok_30d += toks
+                if ld == today:
+                    cost_today += c
+                    tok_today += toks
+                s = sessions.setdefault(f, {"mtime": mt, "tokens": 0})
+                s["tokens"] += toks
+        except OSError:
+            continue
+    latest = max(sessions.values(), key=lambda s: s["mtime"], default={"tokens": 0})
+    return {"cost_today": cost_today, "cost_30d": cost_30d,
+            "tokens_today": tok_today, "tokens_30d": tok_30d,
+            "latest_tokens": latest["tokens"]}
+
+
+# -------------------------------------------------------------------- Codex
+
+def _codex_session_model(path: str) -> str:
+    try:
+        for line in open(path, encoding="utf-8"):
+            if '"model"' not in line:
+                continue
+            try:
+                d = json.loads(line)
+            except (ValueError, TypeError):
+                continue
+            payload = d.get("payload")
+            if isinstance(payload, dict) and isinstance(payload.get("model"), str):
+                return payload["model"]
+    except OSError:
+        pass
+    return ""
+
+
+def _codex_summary(now: datetime) -> dict:
+    prices = _load_prices()
+    today = now.astimezone().date()
+    floor_day = today - timedelta(days=30)
+    floor_mtime = (datetime.combine(floor_day, datetime.min.time()).astimezone()
+                   - timedelta(days=1)).timestamp()
+    cost_today = cost_30d = 0.0
+    tok_today = tok_30d = 0
+    latest_mtime, latest_tokens = 0.0, 0
+    chosen: dict[str, str] = {}
+    mtimes: dict[str, float] = {}
+    for pat in (os.path.expanduser("~/.codex/sessions/**/*.jsonl"),
+                os.path.expanduser("~/.codex/archived_sessions/**/*.jsonl")):
+        for f in glob.glob(pat, recursive=True):
+            try:
+                mt = os.path.getmtime(f)
+            except OSError:
+                continue
+            if mt < floor_mtime:
+                continue
+            uid = core._codex_session_uuid(f)
+            if uid not in mtimes or mt > mtimes[uid]:
+                mtimes[uid], chosen[uid] = mt, f
+    for uid, f in chosen.items():
+        rates = price_for(_codex_session_model(f), prices)
+        mt = mtimes[uid]
+        sess_tokens = 0
+        try:
+            for line in open(f, encoding="utf-8"):
+                try:
+                    d = json.loads(line)
+                except (ValueError, TypeError):
+                    continue
+                info = (d.get("payload") or {}).get("info") if isinstance(d.get("payload"), dict) else None
+                if not isinstance(info, dict):
+                    continue
+                lt = info.get("last_token_usage")
+                if not isinstance(lt, dict):
+                    continue
+                dt = core._parse_ts(d.get("timestamp"))
+                if dt is None:
+                    continue
+                ld = dt.astimezone().date()
+                if ld < floor_day:
+                    continue
+                inp = lt.get("input_tokens", 0) or 0
+                cached = lt.get("cached_input_tokens", 0) or 0
+                out = lt.get("output_tokens", 0) or 0
+                toks = lt.get("total_tokens", 0) or 0
+                c = _cost(rates, max(0, inp - cached), 0, cached, out)
+                cost_30d += c
+                tok_30d += toks
+                sess_tokens += toks
+                if ld == today:
+                    cost_today += c
+                    tok_today += toks
+        except OSError:
+            continue
+        if mt > latest_mtime:
+            latest_mtime, latest_tokens = mt, sess_tokens
+    return {"cost_today": cost_today, "cost_30d": cost_30d,
+            "tokens_today": tok_today, "tokens_30d": tok_30d,
+            "latest_tokens": latest_tokens}
+
+
+# ----------------------------------------------------------------- public API
+
+def usage_summary(tool: str, now: datetime | None = None, ttl: int = DEFAULT_TTL) -> dict:
+    """{cost_today, cost_30d, tokens_today, tokens_30d, latest_tokens} per tool.
+
+    TTL-cached (default 10 min) — the 30-day scan is expensive and barely moves.
+    """
+    now = now or datetime.now().astimezone()
+    ck = f"summary:{tool}"
+    hit = _CACHE.get(ck)
+    if hit and (time.time() - hit[0]) < ttl:
+        return hit[1]
+    fn = _claude_summary if tool == "claude" else _codex_summary
+    val = fn(now)
+    _CACHE[ck] = (time.time(), val)
+    return val
+
+
+def humanize_tokens(n: int) -> str:
+    if n >= 1_000_000_000:
+        return f"{n / 1e9:.1f}B"
+    if n >= MILLION:
+        return f"{n / MILLION:.0f}M"
+    if n >= 1000:
+        return f"{n / 1000:.0f}K"
+    return str(n)
+
+
+def humanize_cost(c: float) -> str:
+    return f"${c:,.2f}"
+
+
+if __name__ == "__main__":
+    for tool in ("claude", "codex"):
+        s = usage_summary(tool, ttl=0)
+        print(f"{tool}:  today {humanize_cost(s['cost_today'])} · 30d {humanize_cost(s['cost_30d'])} "
+              f"· 30d tokens {humanize_tokens(s['tokens_30d'])} · latest {humanize_tokens(s['latest_tokens'])}")

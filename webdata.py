@@ -59,10 +59,16 @@ def core_payload(now: datetime | None = None, config: dict | None = None) -> dic
     c = st["combined"]
     expected = sum(t["expected"] for t in tools.values())
     p = core.pace(now, config, c["today"], c["target"])
+    frac = round(core._active_fraction(now, config), 3)
+    # Outside the active earning window (e.g. before 09:00 / overnight) pace is
+    # undefined — expected is 0, so "ahead" would be a lie. Surface "early".
+    state = _state(p["mood"])
+    if frac <= 0 and not p["hit"]:
+        state = "early"
     out = {
         "generated_at": now.isoformat(),
         "clock": now.strftime("%H:%M"),
-        "active_fraction": round(core._active_fraction(now, config), 3),
+        "active_fraction": frac,
         "combined": {
             "today": c["today"],
             "target": c["target"],
@@ -70,7 +76,7 @@ def core_payload(now: datetime | None = None, config: dict | None = None) -> dic
             "remaining": c["remaining"],
             "expected": expected,
             "deficit": max(0, expected - c["today"]),
-            "state": _state(p["mood"]),
+            "state": state,
             "hit": p["hit"],
             "pace_ratio": round(c["today"] / expected, 2) if expected else None,
         },

@@ -25,7 +25,12 @@
     --alarm:      oklch(0.64 0.20 25);
     --ease: cubic-bezier(0.16, 1, 0.3, 1);   /* ease-out-expo */
   }
-  /* ── State ramp: cold/starved → neutral → blazing ── */
+  /* ── State ramp: dormant → cold/starved → neutral → blazing ── */
+  body[data-state="early"] {
+    --bg-0: oklch(0.15 0.012 250); --bg-1: oklch(0.19 0.014 250);
+    --heat: oklch(0.62 0.07 210); --heat-soft: oklch(0.62 0.08 210 / 0.12);
+    --ink-dim: oklch(0.64 0.02 240); --glow: oklch(0.6 0.08 210 / 0);
+  }
   body[data-state="behind"] {
     --bg-0: oklch(0.15 0.02 255); --bg-1: oklch(0.19 0.024 255);
     --heat: oklch(0.55 0.09 250); --heat-soft: oklch(0.55 0.12 255 / 0.16);
@@ -186,12 +191,18 @@
       <div class="tool" data-tool="claude">
         <div class="row"><span class="name">Claude</span><span class="amt mono" id="claude-amt">—</span></div>
         <div class="bar"><div class="f" id="claude-fill"></div><div class="p" id="claude-pace"></div></div>
-        <div class="detail"><div class="grid" id="claude-detail"></div></div>
+        <div class="detail"><div class="grid">
+          <div id="claude-sess"><b>Sess</b> —</div><div id="claude-week"><b>Week</b> —</div>
+          <div id="claude-cost"><b>cost</b> …</div><div id="claude-tok"><b>30d</b> …</div>
+        </div></div>
       </div>
       <div class="tool" data-tool="codex">
         <div class="row"><span class="name">Codex</span><span class="amt mono" id="codex-amt">—</span></div>
         <div class="bar"><div class="f" id="codex-fill"></div><div class="p" id="codex-pace"></div></div>
-        <div class="detail"><div class="grid" id="codex-detail"></div></div>
+        <div class="detail"><div class="grid">
+          <div id="codex-sess"><b>Sess</b> —</div><div id="codex-week"><b>Week</b> —</div>
+          <div id="codex-cost"><b>cost</b> …</div><div id="codex-tok"><b>30d</b> …</div>
+        </div></div>
       </div>
     </div>
   </div>
@@ -221,14 +232,17 @@
     requestAnimationFrame(step);
   }
 
+  const px = d => d.pace_ratio == null ? "" : `${d.pace_ratio}× `;
   const GOADS = {
+    // outside the work window (overnight / before 09:00) — fresh day, invite the burn
+    early:   d => `新的一天。<b>${tok(d.today)}</b> / ${tok(d.target)}，开烧。`,
     // low / behind — needle them
     starved: d => `<span class="cold">${tok(d.deficit)} behind pace.</span> AI 在等你，别让额度睡觉。`,
     behind:  d => `落后了。再烧 <b>${tok(d.deficit)}</b> 才追上 pace。`,
     ontrack: d => `稳住节奏。今天 <b>${d.percent.toFixed(0)}%</b>，按 pace 走。`,
-    ahead:   d => `<span class="hot">在线。</span>${d.pace_ratio}× pace，保持。`,
+    ahead:   d => `<span class="hot">在线。</span>${px(d)}pace，保持。`,
     hit:     d => `<span class="hot">达标 ✓</span> 今天没白活。继续往上顶。`,
-    rocket:  d => `<span class="hot">上头了 🔥</span> ${d.pace_ratio}× pace。这才对。`,
+    rocket:  d => `<span class="hot">上头了 🔥</span> ${px(d)}pace。这才对。`,
   };
   function goadFor(c) {
     if (c.state === "behind") {
@@ -256,11 +270,12 @@
       $(t + "-amt").innerHTML = `${tok(x.today)} / ${tok(x.target)}${px}`;
       $(t + "-fill").style.width = clamp(x.today / x.target * 100, 0, 100) + "%";
       $(t + "-pace").style.left = clamp(x.expected / x.target * 100, 0, 100) + "%";
-      const sess = x.session ? `<div><b>Sess</b> ${x.session.left}% · ${x.session.reset}</div>` : "";
-      const wk = x.weekly ? `<div><b>Week</b> ${x.weekly.left}% · ${x.weekly.reset}</div>` : "";
-      const stale = x.plan_stale ? ` <span class="stale">⚠</span>` : "";
-      $(t + "-detail").innerHTML = sess + wk +
-        `<div id="${t}-cost"><b>cost</b> —</div><div id="${t}-tok"><b>30d</b> —</div>` + stale;
+      // update ONLY sess/week here; cost/tok are owned by renderCost (no clobber)
+      const stale = x.plan_stale ? ' <span class="stale">⚠</span>' : "";
+      $(t + "-sess").innerHTML = x.session
+        ? `<b>Sess</b> ${x.session.left}% · ${x.session.reset}` : "<b>Sess</b> —";
+      $(t + "-week").innerHTML = x.weekly
+        ? `<b>Week</b> ${x.weekly.left}% · ${x.weekly.reset}${stale}` : "<b>Week</b> —";
     }
 
     // flare on crossing into a winning state

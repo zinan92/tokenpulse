@@ -186,7 +186,7 @@ class TokenPulseWidget:
                      f"30d {cost.humanize_cost(s.get('cost_30d', 0))}")
             c["tok"].configure(
                 text=f"30d {cost.humanize_tokens(s.get('tokens_30d', 0))} tok   "
-                     f"latest {cost.humanize_tokens(s.get('latest_tokens', 0))}")
+                     f"today {cost.humanize_tokens(s.get('tokens_today', 0))}")
 
     # -------------------------------------------------------------- placement
     def _place_top_right(self):

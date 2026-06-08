@@ -1,0 +1,303 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>TokenPulse</title>
+<style>
+  /* ───────────────────────────────────────────────────────────────
+     TokenPulse — the goad. Physical scene: late-night desk, dark, a
+     glance to the corner. The surface itself reacts: starved & cold when
+     you've coasted, blazing & warm when you've gone hard. Heat = usage.
+     ─────────────────────────────────────────────────────────────── */
+  :root {
+    color-scheme: dark;
+    /* state-driven (set by JS via [data-state] below) */
+    --ink:        oklch(0.96 0.01 80);
+    --ink-dim:    oklch(0.70 0.02 80);
+    --ink-faint:  oklch(0.52 0.02 250);
+    --bg-0:       oklch(0.16 0.012 250);
+    --bg-1:       oklch(0.21 0.016 250);
+    --track:      oklch(0.27 0.02 250);
+    --heat:       oklch(0.72 0.17 55);   /* the fill / accent */
+    --heat-soft:  oklch(0.72 0.17 55 / 0.18);
+    --glow:       oklch(0.72 0.17 55 / 0);
+    --alarm:      oklch(0.64 0.20 25);
+    --ease: cubic-bezier(0.16, 1, 0.3, 1);   /* ease-out-expo */
+  }
+  /* ── State ramp: cold/starved → neutral → blazing ── */
+  body[data-state="behind"] {
+    --bg-0: oklch(0.15 0.02 255); --bg-1: oklch(0.19 0.024 255);
+    --heat: oklch(0.55 0.09 250); --heat-soft: oklch(0.55 0.12 255 / 0.16);
+    --ink-dim: oklch(0.66 0.02 255); --glow: oklch(0.6 0.1 255 / 0);
+  }
+  body[data-state="ontrack"] {
+    --heat: oklch(0.74 0.13 75); --heat-soft: oklch(0.74 0.14 75 / 0.16);
+  }
+  body[data-state="ahead"] {
+    --heat: oklch(0.76 0.17 55); --heat-soft: oklch(0.76 0.17 55 / 0.20);
+    --glow: oklch(0.76 0.17 55 / 0.35);
+  }
+  body[data-state="hit"], body[data-state="rocket"] {
+    --bg-0: oklch(0.17 0.03 45); --bg-1: oklch(0.22 0.04 45);
+    --heat: oklch(0.80 0.19 50); --heat-soft: oklch(0.80 0.19 50 / 0.24);
+    --glow: oklch(0.80 0.19 50 / 0.55);
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html, body { width: 100%; height: 100%; overflow: hidden; background: var(--bg-0); }
+  body {
+    font: 13px/1.4 -apple-system, "SF Pro Text", system-ui, sans-serif;
+    color: var(--ink);
+    -webkit-user-select: none; user-select: none;
+  }
+  .mono { font-family: "SF Mono", "Menlo", ui-monospace, monospace;
+          font-variant-numeric: tabular-nums; }
+
+  .frame {
+    width: 100%; height: 100%;
+    background:
+      radial-gradient(120% 90% at 80% -10%, var(--heat-soft), transparent 58%),
+      linear-gradient(180deg, var(--bg-1), var(--bg-0));
+    border-bottom: 1px solid var(--heat-soft);
+    padding: 15px 17px 14px;
+    transition: background 0.6s var(--ease), border-color 0.6s var(--ease);
+  }
+
+  /* ── header ── */
+  header {
+    display: flex; align-items: center; justify-content: space-between;
+    margin-bottom: 13px;
+  }
+  .brand { display: flex; align-items: center; gap: 7px;
+           font-size: 11px; letter-spacing: 0.14em; color: var(--ink-dim);
+           font-weight: 600; }
+  .spark {
+    width: 8px; height: 8px; border-radius: 50%;
+    background: var(--heat); box-shadow: 0 0 10px var(--heat);
+  }
+  body[data-state="behind"] .spark { animation: starve 2.4s var(--ease) infinite; }
+  body[data-state="rocket"] .spark, body[data-state="hit"] .spark { animation: throb 1.6s ease-in-out infinite; }
+  .clock { font-size: 11px; color: var(--ink-faint); }
+
+  /* ── hero gauge (the focal — NOT a hero-metric number) ── */
+  .hero { margin-bottom: 4px; }
+  .readout { display: flex; align-items: baseline; gap: 8px; margin-bottom: 9px; }
+  .big { font-size: 30px; font-weight: 650; letter-spacing: -0.02em; color: var(--ink);
+         line-height: 1; }
+  .of { font-size: 13px; color: var(--ink-faint); }
+  .of b { color: var(--ink-dim); font-weight: 500; }
+
+  .gauge {
+    position: relative; height: 13px; border-radius: 7px;
+    background: var(--track); overflow: hidden;
+    box-shadow: inset 0 1px 2px #0008;
+  }
+  .gauge .fill {
+    position: absolute; inset: 0 auto 0 0; width: 0;
+    border-radius: 7px;
+    background: linear-gradient(90deg,
+       color-mix(in oklch, var(--heat), #000 22%), var(--heat));
+    box-shadow: 0 0 14px -2px var(--heat);
+    transition: width 0.9s var(--ease), background 0.6s var(--ease);
+  }
+  .gauge .pace {
+    position: absolute; top: -2px; bottom: -2px; width: 2px;
+    background: var(--ink);
+    border-radius: 2px; opacity: 0.65;
+    transition: left 0.9s var(--ease);
+  }
+  body[data-state="behind"] .pace { background: var(--alarm); opacity: 0.95;
+      box-shadow: 0 0 8px var(--alarm); animation: nag 1.6s ease-in-out infinite; }
+
+  .goad {
+    margin-top: 10px; font-size: 12.5px; line-height: 1.45;
+    color: var(--ink-dim); min-height: 18px;
+  }
+  .goad b { color: var(--ink); font-weight: 600; }
+  .goad .hot { color: var(--heat); }
+  .goad .cold { color: var(--alarm); font-weight: 600; }
+  body[data-state="behind"] .goad { animation: breathe 3s ease-in-out infinite; }
+
+  /* ── tool rows ── */
+  .tools { margin-top: 15px; display: flex; flex-direction: column; gap: 11px; }
+  .tool { cursor: default; }
+  .tool .row { display: flex; align-items: baseline; justify-content: space-between;
+               margin-bottom: 5px; }
+  .tool .name { font-size: 12px; font-weight: 600; color: var(--ink); }
+  .tool .amt { font-size: 11.5px; color: var(--ink-dim); }
+  .tool .amt .pace-x { color: var(--heat); font-weight: 600; }
+  .bar { position: relative; height: 7px; border-radius: 5px; background: var(--track);
+         overflow: hidden; }
+  .bar .f { position: absolute; inset: 0 auto 0 0; width: 0; border-radius: 5px;
+            background: var(--heat); box-shadow: 0 0 8px -1px var(--heat);
+            transition: width 0.9s var(--ease); }
+  .bar .p { position: absolute; top: -1px; bottom: -1px; width: 2px; background: var(--ink);
+            opacity: 0.5; border-radius: 2px; transition: left 0.9s var(--ease); }
+
+  /* ── detail (always shown; brightens on hover) ── */
+  .detail {
+    font-size: 10.5px; color: var(--ink-faint); margin-top: 6px;
+    opacity: 0.78; transition: opacity 0.3s ease;
+  }
+  .tool:hover .detail { opacity: 1; }
+  .detail .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 2px 14px; }
+  .detail b { color: var(--ink-dim); font-weight: 600; }
+
+  .stale { color: var(--alarm); font-size: 10px; }
+
+  /* ── motion ── */
+  @keyframes throb { 0%,100% { transform: scale(1); opacity: 1; }
+                     50% { transform: scale(1.35); opacity: 0.85; } }
+  @keyframes starve { 0%,100% { opacity: 0.35; } 50% { opacity: 0.12; } }
+  @keyframes nag { 0%,100% { opacity: 0.95; } 50% { opacity: 0.4; } }
+  @keyframes breathe { 0%,100% { opacity: 1; } 50% { opacity: 0.62; } }
+  @keyframes flare {
+    0% { box-shadow: 0 0 0 0 var(--heat); }
+    100% { box-shadow: 0 0 40px 8px transparent; }
+  }
+  .flare { animation: flare 0.7s var(--ease); }
+
+  @media (prefers-reduced-motion: reduce) {
+    * { animation: none !important; transition-duration: 0.01ms !important; }
+  }
+</style>
+</head>
+<body data-state="ontrack">
+  <div class="frame" id="frame">
+    <header>
+      <div class="brand"><span class="spark"></span> TOKENPULSE</div>
+      <div class="clock mono" id="clock">—</div>
+    </header>
+
+    <section class="hero">
+      <div class="readout">
+        <span class="big mono" id="c-today">0</span>
+        <span class="of">/ <b class="mono" id="c-target">300M</b> today</span>
+      </div>
+      <div class="gauge">
+        <div class="fill" id="c-fill"></div>
+        <div class="pace" id="c-pace"></div>
+      </div>
+      <div class="goad" id="goad">Reading the furnace…</div>
+    </section>
+
+    <div class="tools">
+      <div class="tool" data-tool="claude">
+        <div class="row"><span class="name">Claude</span><span class="amt mono" id="claude-amt">—</span></div>
+        <div class="bar"><div class="f" id="claude-fill"></div><div class="p" id="claude-pace"></div></div>
+        <div class="detail"><div class="grid" id="claude-detail"></div></div>
+      </div>
+      <div class="tool" data-tool="codex">
+        <div class="row"><span class="name">Codex</span><span class="amt mono" id="codex-amt">—</span></div>
+        <div class="bar"><div class="f" id="codex-fill"></div><div class="p" id="codex-pace"></div></div>
+        <div class="detail"><div class="grid" id="codex-detail"></div></div>
+      </div>
+    </div>
+  </div>
+
+<script>
+  const $ = id => document.getElementById(id);
+  const clamp = (n, lo, hi) => Math.max(lo, Math.min(hi, n));
+
+  function tok(n) {
+    if (n >= 1e9) return (n/1e9).toFixed(1) + "B";
+    if (n >= 1e6) return Math.round(n/1e6) + "M";
+    if (n >= 1e3) return Math.round(n/1e3) + "K";
+    return String(n|0);
+  }
+  function usd(n) { return "$" + (n||0).toLocaleString("en-US", {minimumFractionDigits: 2, maximumFractionDigits: 2}); }
+
+  // count-up animation for the hero number
+  let _cur = 0;
+  function countTo(el, target) {
+    const from = _cur, start = performance.now(), dur = 900;
+    function step(t) {
+      const k = clamp((t - start)/dur, 0, 1);
+      const e = 1 - Math.pow(1 - k, 4);          // ease-out-quart
+      el.textContent = tok(from + (target - from) * e);
+      if (k < 1) requestAnimationFrame(step); else _cur = target;
+    }
+    requestAnimationFrame(step);
+  }
+
+  const GOADS = {
+    // low / behind — needle them
+    starved: d => `<span class="cold">${tok(d.deficit)} behind pace.</span> AI 在等你，别让额度睡觉。`,
+    behind:  d => `落后了。再烧 <b>${tok(d.deficit)}</b> 才追上 pace。`,
+    ontrack: d => `稳住节奏。今天 <b>${d.percent.toFixed(0)}%</b>，按 pace 走。`,
+    ahead:   d => `<span class="hot">在线。</span>${d.pace_ratio}× pace，保持。`,
+    hit:     d => `<span class="hot">达标 ✓</span> 今天没白活。继续往上顶。`,
+    rocket:  d => `<span class="hot">上头了 🔥</span> ${d.pace_ratio}× pace。这才对。`,
+  };
+  function goadFor(c) {
+    if (c.state === "behind") {
+      const ratio = c.pace_ratio == null ? 1 : c.pace_ratio;
+      return (ratio < 0.4 ? GOADS.starved : GOADS.behind)(c);
+    }
+    return (GOADS[c.state] || GOADS.ontrack)(c);
+  }
+
+  let _lastState = null;
+  function renderCore(d) {
+    if (!d) return;
+    $("clock").textContent = d.clock;
+    const c = d.combined;
+    document.body.dataset.state = c.state;
+    $("c-target").textContent = tok(c.target);
+    countTo($("c-today"), c.today);
+    $("c-fill").style.width = clamp(c.today / c.target * 100, 0, 100) + "%";
+    $("c-pace").style.left = clamp(c.expected / c.target * 100, 0, 100) + "%";
+    $("goad").innerHTML = goadFor(c);
+
+    for (const t of ["claude", "codex"]) {
+      const x = d.tools[t];
+      const px = x.pace_ratio != null ? `  <span class="pace-x">${x.pace_ratio}×</span>` : "";
+      $(t + "-amt").innerHTML = `${tok(x.today)} / ${tok(x.target)}${px}`;
+      $(t + "-fill").style.width = clamp(x.today / x.target * 100, 0, 100) + "%";
+      $(t + "-pace").style.left = clamp(x.expected / x.target * 100, 0, 100) + "%";
+      const sess = x.session ? `<div><b>Sess</b> ${x.session.left}% · ${x.session.reset}</div>` : "";
+      const wk = x.weekly ? `<div><b>Week</b> ${x.weekly.left}% · ${x.weekly.reset}</div>` : "";
+      const stale = x.plan_stale ? ` <span class="stale">⚠</span>` : "";
+      $(t + "-detail").innerHTML = sess + wk +
+        `<div id="${t}-cost"><b>cost</b> —</div><div id="${t}-tok"><b>30d</b> —</div>` + stale;
+    }
+
+    // flare on crossing into a winning state
+    if (_lastState && _lastState !== c.state && (c.state === "hit" || c.state === "rocket")) {
+      $("frame").classList.remove("flare"); void $("frame").offsetWidth; $("frame").classList.add("flare");
+    }
+    _lastState = c.state;
+  }
+
+  function renderCost(cost) {
+    if (!cost) return;
+    for (const t of ["claude", "codex"]) {
+      const x = cost[t]; if (!x) continue;
+      const cEl = $(t + "-cost"), tEl = $(t + "-tok");
+      if (cEl) cEl.innerHTML = `<b>cost</b> ${usd(x.cost_today)} · 30d ${usd(x.cost_30d)}`;
+      if (tEl) tEl.innerHTML = `<b>30d</b> ${tok(x.tokens_30d)} · today ${tok(x.tokens_today)}`;
+    }
+  }
+
+  async function tick() {
+    try {
+      const core = await window.pywebview.api.core();
+      renderCore(JSON.parse(core));
+    } catch (e) { $("goad").textContent = "data error: " + e; }
+  }
+  async function tickCost() {
+    try { renderCost(JSON.parse(await window.pywebview.api.cost())); } catch (e) {}
+  }
+
+  function start() {
+    tick();
+    tickCost();
+    setInterval(tick, 60000);       // goal/pace every 1 min
+    setInterval(tickCost, 600000);  // cost every 10 min (cached)
+  }
+  if (window.pywebview) start();
+  else window.addEventListener("pywebviewready", start);
+</script>
+</body>
+</html>

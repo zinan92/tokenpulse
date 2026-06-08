@@ -16,6 +16,7 @@ from __future__ import annotations
 import glob
 import json
 import os
+import re
 import time
 from datetime import datetime, timedelta, timezone
 
@@ -48,24 +49,39 @@ def _load_prices() -> dict:
     return prices
 
 
+def _is_dated(mid: str) -> bool:
+    return bool(re.search(r"\d{8}$", mid))
+
+
 def price_for(model: str, prices: dict | None = None) -> dict:
-    """Look up a model's rates: exact → strip trailing -date → prefix match."""
+    """Look up a model's rates with graceful fallback.
+
+    1. exact match
+    2. strip a trailing -YYYYMMDD
+    3. family fallback: trim trailing -<seg> until siblings exist, then pick the
+       highest-version, non-dated sibling. This keeps NEW models priced when the
+       cached table lags (e.g. claude-opus-4-8 → claude-opus-4-7 rates, since
+       Anthropic keeps Opus pricing flat across point releases).
+    """
     if not model:
         return {}
     prices = prices if prices is not None else _load_prices()
     if model in prices:
         return prices[model]
-    # strip a trailing -YYYYMMDD
-    parts = model.rsplit("-", 1)
-    if len(parts) == 2 and parts[1].isdigit() and len(parts[1]) == 8:
-        if parts[0] in prices:
-            return prices[parts[0]]
-    # longest-prefix match
-    best, blen = {}, 0
-    for mid, cost in prices.items():
-        if (model.startswith(mid) or mid.startswith(model)) and len(mid) > blen:
-            best, blen = cost, len(mid)
-    return best
+    base = re.sub(r"-\d{8}$", "", model)
+    if base in prices:
+        return prices[base]
+    stem = base
+    while "-" in stem:
+        stem = stem.rsplit("-", 1)[0]
+        sibs = [k for k in prices if k == stem or k.startswith(stem + "-")]
+        if sibs:
+            best = max(sibs, key=lambda k: (
+                0 if _is_dated(k) else 1,
+                tuple(int(n) for n in re.findall(r"\d+", k[len(stem):])),
+            ))
+            return prices[best]
+    return {}
 
 
 def _cost(rates: dict, inp: int, cache_create: int, cache_read: int, out: int) -> float:

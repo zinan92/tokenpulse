@@ -1,0 +1,47 @@
+project_id: tokenpulse
+name: TokenPulse
+repo_path: /Users/wendy/work/tokenpulse
+
+purpose: >
+  TokenPulse helps Park see Claude/Codex usage pace and choose a concrete
+  next AI-work session when plan capacity is being underused.
+
+artifact_contract:
+  primary:
+    - cli output from `python3 cli.py`
+    - session suggestions from `python3 cli.py --sessions`
+    - test results from `python3 -m pytest tests/`
+  not_primary:
+    - launchd installation state
+    - Telegram delivery
+    - external service account state
+
+risk_policy:
+  auto_execute: low
+  needs_human_approval:
+    - credential or token handling
+    - CodexBar auth probing changes
+    - Telegram send behavior
+    - launchd install or uninstall changes
+    - destructive file operations
+    - network publishing
+    - broad architecture rewrites
+
+allowed_low_risk_work:
+  - tests
+  - README or docs
+  - CLI output clarity
+  - deterministic parsing or validation
+  - small internal refactors with unchanged behavior
+
+verification:
+  commands:
+    - python3 -m pytest tests/
+
+loop_rules:
+  - Planner creates one low-risk task at a time.
+  - Worker modifies only files listed in the issue.
+  - Reviewer must verify Definition of Done and tests before pass.
+  - Medium or high risk work is reported to Linear for human approval.
+  - Runtime state and run logs live in the global loop engine, not here.
+

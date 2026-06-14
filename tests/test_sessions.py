@@ -6,6 +6,7 @@ tests never inspect live Claude or Codex logs from the current machine.
 import json
 import os
 import sys
+from datetime import datetime, timezone
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 import sessions  # noqa: E402
@@ -18,6 +19,12 @@ def _write_jsonl(path, records):
     with open(path, "w", encoding="utf-8") as fh:
         for record in records:
             fh.write(json.dumps(record) + "\n")
+
+
+def _write_lines(path, lines):
+    with open(path, "w", encoding="utf-8") as fh:
+        for line in lines:
+            fh.write(line + "\n")
 
 
 def _patch_session_paths(monkeypatch, tmp_path):
@@ -95,6 +102,42 @@ def test_recent_sessions_merges_claude_and_codex_newest_first(tmp_path, monkeypa
     ]
     assert rows[1]["snippet"] == "resume claude work"
     assert rows[0]["age"] == "5m ago"
+
+
+def test_codex_recent_accepts_iso_z_and_skips_unusable_index_rows(tmp_path, monkeypatch):
+    _, codex_index = _patch_session_paths(monkeypatch, tmp_path)
+    monkeypatch.setattr(sessions.time, "time", lambda: NOW)
+
+    iso_ts = NOW - 900
+    iso_z = datetime.fromtimestamp(iso_ts, timezone.utc).isoformat().replace("+00:00", "Z")
+    codex_index.parent.mkdir(parents=True)
+    _write_lines(codex_index, [
+        json.dumps({"id": "numeric-newest", "thread_name": "Numeric Newest", "updated_at": NOW - 300}),
+        "{not valid json",
+        json.dumps({"id": "missing-timestamp", "thread_name": "Missing Timestamp"}),
+        json.dumps({"id": "bad-timestamp", "thread_name": "Bad Timestamp", "updated_at": "not-a-date"}),
+        json.dumps({"id": "iso-z", "thread_name": "ISO Z Session", "updated_at": iso_z}),
+        json.dumps({"id": "too-old", "thread_name": "Too Old", "updated_at": NOW - 3 * 86400}),
+    ])
+
+    rows = sessions._codex_recent(days=1)
+
+    assert rows == [
+        {
+            "tool": "codex",
+            "name": "Numeric Newest",
+            "last_touched": NOW - 300,
+            "age": "5m ago",
+            "snippet": "",
+        },
+        {
+            "tool": "codex",
+            "name": "ISO Z Session",
+            "last_touched": iso_ts,
+            "age": "15m ago",
+            "snippet": "",
+        },
+    ]
 
 
 def test_suggestion_skips_active_session_when_settled_available(monkeypatch):

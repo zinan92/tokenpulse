@@ -45,6 +45,16 @@ def _print_limits(info: dict):
     print(f"      plan{stale}: " + "  ·  ".join(parts))
 
 
+def _operator_summary(st: dict) -> str:
+    tools = list(st["tools"].values())
+    remaining = core.humanize(st["combined"]["remaining"])
+    if all(t["hit"] for t in tools):
+        return "Operator: complete - daily target is done; choose the next AI-work session by priority, not quota pressure."
+    if any(t["mood"] == "behind" for t in tools):
+        return f"Operator: behind - choose the next AI-work session now to catch up; {remaining} tokens remain today."
+    return f"Operator: on track - keep the next AI-work session aligned to priority; {remaining} tokens remain today."
+
+
 def main(argv=None):
     ap = argparse.ArgumentParser()
     ap.add_argument("--json", action="store_true")
@@ -80,6 +90,7 @@ def main(argv=None):
     c = st["combined"]
     print(f"\nΣ  {core.humanize(c['today'])}/{core.humanize(c['target'])}  ({c['percent']:.0f}%)  "
           f"remaining {core.humanize(c['remaining'])}")
+    print(_operator_summary(st))
     sug = sessions.suggestion()
     if sug and not all(t["hit"] for t in st["tools"].values()):
         print(f"\n▶  resume [{sug['tool']}] {sug['name']} · {sug['age']}")

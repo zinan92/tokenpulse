@@ -88,4 +88,5 @@ def test_default_output_contract_with_unavailable_plan(monkeypatch, capsys):
     assert "Claude" in out
     assert "Codex" in out
     assert "Σ  175.0M/200.0M  (88%)  remaining 25.0M" in out
+    assert "Operator: behind - choose the next AI-work session now to catch up; 25.0M tokens remain today." in out
     assert "plan: (CodexBar 未运行/无数据 — no-history)" in out

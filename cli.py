@@ -1,7 +1,7 @@
 """TokenPulse terminal view — quick status without opening the widget.
 
   python3 cli.py            # human summary
-  python3 cli.py --json     # raw status blob
+  python3 cli.py --json     # status blob plus operator/impact summaries
   python3 cli.py --sessions # recent sessions to resume
 """
 from __future__ import annotations
@@ -79,7 +79,12 @@ def main(argv=None):
     st = core.status()
     pl = limits.plan_limits()
     if args.json:
-        print(json.dumps({"status": st, "limits": pl}, indent=2, default=str))
+        print(json.dumps({
+            "status": st,
+            "limits": pl,
+            "operator_summary": _operator_summary(st),
+            "impact_summary": _impact_summary(st),
+        }, indent=2, default=str))
         return 0
 
     now = datetime.fromisoformat(st["generated_at"])

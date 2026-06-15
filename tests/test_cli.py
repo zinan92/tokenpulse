@@ -70,7 +70,16 @@ def test_json_emits_parseable_status_and_limits(monkeypatch, capsys):
     payload = json.loads(capsys.readouterr().out)
     assert payload["status"]["combined"]["today"] == 175_000_000
     assert payload["limits"]["claude"]["available"] is False
-    assert set(payload) == {"status", "limits"}
+    assert "status" in payload
+    assert "limits" in payload
+    assert payload["operator_summary"] == (
+        "Operator: behind - choose the next AI-work session now to catch up; "
+        "25.0M tokens remain today."
+    )
+    assert payload["impact_summary"] == (
+        "Impact: raw quota and pace become a next-session choice: "
+        "start now to turn lag into useful AI-work."
+    )
 
 
 def test_sessions_prints_recent_sessions_without_status(monkeypatch, capsys):

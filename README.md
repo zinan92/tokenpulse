@@ -101,6 +101,10 @@ The default CLI status includes an `Operator:` line that translates the token
 state into behind, on track, or complete guidance for choosing the next AI-work
 session. The following `Impact:` line makes the before/after explicit: raw
 quota and pace numbers become a clear choice for the next AI-work session.
+`python3 cli.py --json` keeps the existing `status` and `limits` fields and
+also includes `operator_summary` and `impact_summary` with the same wording, so
+loop digests and review tools can carry the operator guidance without scraping
+terminal prose.
 
 The Tkinter widget and web widget show cost lines from `cost.py`: today's cost,
 30-day cost, 30-day tokens, and today's tokens. Pricing depends on the local

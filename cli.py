@@ -55,6 +55,15 @@ def _operator_summary(st: dict) -> str:
     return f"Operator: on track - keep the next AI-work session aligned to priority; {remaining} tokens remain today."
 
 
+def _impact_summary(st: dict) -> str:
+    tools = list(st["tools"].values())
+    if all(t["hit"] for t in tools):
+        return "Impact: raw quota and pace become a next-session choice: priority decides because today's token target is done."
+    if any(t["mood"] == "behind" for t in tools):
+        return "Impact: raw quota and pace become a next-session choice: start now to turn lag into useful AI-work."
+    return "Impact: raw quota and pace become a next-session choice: stay on the priority session while runway is healthy."
+
+
 def main(argv=None):
     ap = argparse.ArgumentParser()
     ap.add_argument("--json", action="store_true")
@@ -91,6 +100,7 @@ def main(argv=None):
     print(f"\nΣ  {core.humanize(c['today'])}/{core.humanize(c['target'])}  ({c['percent']:.0f}%)  "
           f"remaining {core.humanize(c['remaining'])}")
     print(_operator_summary(st))
+    print(_impact_summary(st))
     sug = sessions.suggestion()
     if sug and not all(t["hit"] for t in st["tools"].values()):
         print(f"\n▶  resume [{sug['tool']}] {sug['name']} · {sug['age']}")

@@ -99,7 +99,8 @@ python3 -m pytest tests/    # run the engine tests
 
 The default CLI status includes an `Operator:` line that translates the token
 state into behind, on track, or complete guidance for choosing the next AI-work
-session.
+session. The following `Impact:` line makes the before/after explicit: raw
+quota and pace numbers become a clear choice for the next AI-work session.
 
 The Tkinter widget and web widget show cost lines from `cost.py`: today's cost,
 30-day cost, 30-day tokens, and today's tokens. Pricing depends on the local

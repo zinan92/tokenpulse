@@ -1,172 +1,219 @@
+<div align="center">
+
 # ⏱ TokenPulse
 
-A lightweight daily-quota **coach** for your Claude Code and Codex subscription
-plans. CodexBar is the odometer (raw token numbers); TokenPulse is the coach —
-it frames those numbers against a **daily target**, shows **pace**, and
-**nudges you with something concrete to go build** when you're behind.
+**把每日 token 用量做成会"鞭策"你的桌面 widget —— 用得少时让你坐立不安，逼自己把订阅额度榨干。**
 
-Goal it tracks: burn **150M tokens/day per plan, every day** (300M combined,
-Claude + Codex). The whole point is to *not leave tokens on the table* — when
-you're behind, it tells you which recent session to jump back into. (Targets are
-per-tool and weekday/weekend-aware in config, currently set flat at 150M.)
+[![Python](https://img.shields.io/badge/python-3.13-blue.svg)](https://python.org)
+[![pywebview](https://img.shields.io/badge/UI-pywebview%20%2B%20HTML/CSS-7c3aed.svg)](https://pywebview.flowrl.com)
+[![Platform](https://img.shields.io/badge/platform-macOS-black.svg)](https://www.apple.com/macos)
+[![Stdlib](https://img.shields.io/badge/deps-stdlib%20only%20(core)-green.svg)](#技术栈)
 
-## How it counts tokens
+</div>
 
-Total throughput per tool, matching what CodexBar shows you (validated:
-reproduces CodexBar's "today ~200M" to within rounding):
-
-- **Claude** — `~/.claude/projects/**/*.jsonl`, summing `message.usage`
-  (input + cache_creation + cache_read + output), **deduped by
-  `(message.id, requestId)`** to undo the transcript double-counting that
-  inflates a naïve scan (~485M) back to the real ~200M.
-- **Codex** — `~/.codex/sessions/**/*.jsonl`, summing per-turn
-  `last_token_usage.total_tokens` (Codex's `total_token_usage` is cumulative —
-  summing it would over-count), deduped by session UUID across `sessions/` and
-  `archived_sessions/`.
-
-## Real plan quota (remaining %) — via CodexBar
-
-Token counts are a self-imposed proxy; the *actual* subscription windows
-(session 5h, weekly, opus weekly) are the true "am I using my plan" signal.
-Those percentages are **not** in any local Claude file — Anthropic only exposes
-them through an OAuth usage endpoint. Rather than extract OAuth tokens from the
-Keychain and call an undocumented endpoint ourselves, `limits.py` **piggybacks
-on CodexBar**, which already does that auth + probing and writes the results to
-disk (refreshed ~hourly):
+---
 
 ```
-~/Library/Application Support/com.steipete.codexbar/history/{claude,codex}.json
+in   本地日志  ~/.claude/projects/**/*.jsonl (Claude) + ~/.codex/sessions/**/*.jsonl (Codex)
+   + CodexBar 落盘缓存  session/weekly 真实额度 + models.dev 单价表
+
+out  常驻桌面 goad widget + Telegram 鞭策推送 + CLI 状态
+   每项含: 今日 token vs 150M/天目标 · pace 配速 · session/weekly 剩余额度 · today/30d cost · 30d tokens
+
+fail CodexBar 未运行 / 数据 >6h 旧  → 额度显示 "—" / ⚠stale,token 追踪照常工作
+fail 模型不在价格表 (如新出的 claude-opus-4-8)  → 家族回退到最新同族费率,而非算成 $0
+fail Telegram 凭证缺失  → 跳过推送,不报错
+fail 在工作窗口外 (凌晨 / 09:00 前)  → 进入 early 状态,不误判 pace
 ```
 
-We read the latest sample per window → `{name, used_percent, left_percent,
-resets_at, reset_in, pace}`. **Requires CodexBar installed and running.** If
-it's absent or its data is stale (>6h old), the gadget degrades gracefully
-(shows "CodexBar 未运行" / a ⚠ stale flag) and the token tracker keeps working.
+`CodexBar 是里程表（只报原始数字）；TokenPulse 是教练 —— 把数字对着每日目标、算配速、落后时扎你一下。`
 
-### Weekly-plan pace — the "use it all" signal
+## 示例输出
 
-For weekly-scale windows we compute a **pace**: by the fraction of the 7-day
-window elapsed you'd need that same fraction used to fully consume the
-allowance before reset. `behind_by` = points of allowance you're trailing
-(unused headroom you're on track to waste). The 5h *session* window is a burst
-limit you don't pace-fill, so it gets no pace. The nudge fires when any weekly
-window trails by more than `plan_behind_threshold` (default 10pts) — so it
-catches under-utilization of the *real* plan even on days you hit the token
-target. Example: `Codex weekly 97%left 4d9h ⚠落后34%` = 37% through the week
-but only 3% used.
+桌面 widget（无边框、置顶、可拖动）。**整个表面随用量变情绪**：落后变冷蓝并扎心文案，超额变炽热发光。
 
-`plan_behind_threshold` is measured in percentage points of weekly-plan pace.
-For example, the default `10` means plan-aware nudges and furnace decisions
-ignore small drift, but treat a weekly window as behind once its `behind_by`
-value reaches 10 points.
+![TokenPulse widget](./screenshots/widget.png)
 
-## Day boundary
-
-Day boundary is **local** by default (your real day, UTC+8) — what "today's
-goal" means to a human, and what the pace window aligns to. A naïve UTC-date
-filter happened to match CodexBar's "~200M" at one afternoon reading; that's a
-single coincidental datapoint, not proof CodexBar uses UTC. If your numbers
-drift a couple percent from CodexBar near the day edges and you'd rather match
-it, set `"day_boundary": "utc"` in `config.json` and compare.
-
-## Parts
-
-| File | What it is |
-|------|-----------|
-| `core.py` | The engine: extractors + targets + pace/mood. Pure stdlib, tested. |
-| `limits.py` | Real plan quota (session/weekly/opus % left + reset) via CodexBar feed. |
-| `sessions.py` | Recent Claude+Codex sessions (last 5 days) → "go resume this". |
-| `widget.py` | **Tkinter** always-on-top desktop widget (~30–50MB, no Chromium). |
-| `webwidget.py` / `webdata.py` | Browser-rendered widget path: pywebview hosts `web/widget.html`, while `webdata.py` bridges core, plan-limit, and cost payloads. |
-| `cost.py` | Today/30d cost and token summaries, priced from the local CodexBar model-pricing cache when available. |
-| `nudge.py` | Telegram push at checkpoints when behind pace (actionable). |
-| `furnace.py` / `fuel.py` | Optional unattended quota burner. Disabled by default; when enabled, dispatches one queued or recurring job to the most-behind tool. |
-| `cli.py` | Terminal status (`--json`, `--sessions`). |
-| `jobs.example.json` | Example recurring-job source for the furnace; copy its shape into a local `jobs.json` if you want baseline jobs. |
-| `config.json` | Targets, active window, checkpoints, day boundary, plan threshold, and furnace kill switch. |
-
-## Use
+终端状态：
 
 ```bash
-python3 cli.py              # quick terminal status
-python3 cli.py --sessions   # recent sessions to resume
-python3 widget.py           # launch the desktop widget
-python3 webwidget.py        # launch the browser-rendered pywebview widget
-python3 nudge.py --dry-run --force   # preview a Telegram nudge
-python3 furnace.py --dry-run          # preview the optional furnace decision
-python3 -m pytest tests/    # run the engine tests
+$ python3 cli.py
+⏱  TokenPulse · 2026-06-15 14:37 · weekday
+
+Claude 🔥 [████████████████░░░░░░] 136M/150M  (91%)  2.41× pace
+      plan: session 84%left 4h22m  ·  weekly 71%left 1d0h
+Codex  🙂 [████████░░░░░░░░░░░░░░] 54M/150M   need 96M · pace 56M
+      plan: session 83%left 10m  ·  weekly 76%left 2d20h
+
+Σ  190M/300M  (63%)
 ```
 
-The default CLI status includes an `Operator:` line that translates the token
-state into behind, on track, or complete guidance for choosing the next AI-work
-session. The following `Impact:` line makes the before/after explicit: raw
-quota and pace numbers become a clear choice for the next AI-work session.
-`python3 cli.py --json` keeps the existing `status` and `limits` fields and
-also includes `operator_summary` and `impact_summary` with the same wording, so
-loop digests and review tools can carry the operator guidance without scraping
-terminal prose.
+Telegram 鞭策（落后 pace 或周额度没跟上时）：
 
-`python3 cli.py --sessions` is the resume-review contract: it frames raw recent
-Claude/Codex session logs as a shortlist for choosing the next AI-work session,
-and it prints a clear no-recent-sessions state instead of a blank terminal.
+```
+⏱ TokenPulse · 20:00 · Sun
+Claude 😴 25M/150M — need 125M (pace 110M)
+   plan session 99% 4h · weekly 88% 6d2h ⚠落后9%
+Σ 38M/300M (12%)
 
-The Tkinter widget and web widget show cost lines from `cost.py`: today's cost,
-30-day cost, 30-day tokens, and today's tokens. Pricing depends on the local
-CodexBar model-pricing cache at
-`~/Library/Caches/codexbar/model-pricing/models-dev-v1.json`; if pricing for a
-model is unavailable, that model contributes zero cost rather than blocking the
-token display.
+▶ 去把 token 用掉：
+resume [codex] 整理GitHub仓库三条管线 · 6h ago
+```
 
-## Run it always (macOS launchd)
+## 架构
+
+```
+本地日志                              CodexBar 落盘 (~/Library/.../com.steipete.codexbar)
+~/.claude/projects/**/*.jsonl  ┐      history/{claude,codex}.json   (session / weekly 额度)
+~/.codex/sessions/**/*.jsonl   ┤      model-pricing/models-dev-v1.json  (per-model 单价)
+                               │              │
+                               ▼              ▼
+        ┌──────────────────────────────────────────────────┐
+        │  core.py    今日 token + 目标 + pace + mood          │
+        │  limits.py  真实 session/weekly 额度 (+ 周配速)        │
+        │  cost.py    today/30d cost + 30d tokens (models.dev) │
+        └───────────────────────┬──────────────────────────┘
+                                ▼  webdata.py  (合并成一个 payload)
+        ┌───────────────┬───────────────┬──────────────┬───────────────┐
+        ▼               ▼               ▼              ▼
+   webwidget.py      nudge.py        cli.py        furnace.py
+   web/widget.html   (Telegram 推送)  (终端状态)    (可选·自动烧额度)
+   常驻 goad widget                                 fuel.py (取料)
+```
+
+数据口径都对标过 CodexBar 并逐字段验证：
+
+- **Token 计数** — Claude 按 `(message.id, requestId)` 去重（修正 transcript 重复写入导致的虚高，~485M → 真实 ~200M）；Codex 按 session UUID 去重、累加每轮 `last_token_usage`。
+- **真实额度** — session/weekly 的 % 在本地 Claude 文件里**没有**，Anthropic 只通过 OAuth 接口暴露。`limits.py` 不自己掏 keychain、不逆向接口，而是**搭 CodexBar 的便车**读它落盘的结果（约每小时刷新）。需要 CodexBar 在运行。
+- **成本** — `tokens × models.dev 单价`，用的就是 CodexBar 缓存的同一张价格表；新模型缺表时家族回退到最新同族费率（实测 Claude 30d cost $1,830 ≈ CodexBar $1,817）。
+
+## 快速开始
 
 ```bash
-./install.sh     # widget at login (keep-alive) + nudge at checkpoint times
-./uninstall.sh   # remove both
+# 1. 克隆
+git clone https://github.com/zinan92/tokenpulse.git
+cd tokenpulse
+
+# 2. 依赖：core/cli/nudge 纯 stdlib；只有 web widget 需要 pywebview
+pip3 install --user pywebview
+
+# 3. 终端看今日状态（最轻量，零额外依赖）
+python3 cli.py
+
+# 4. 启动桌面 goad widget（无边框置顶，可拖动）
+python3 webwidget.py
+
+# 5. (可选) 装成 launchd 常驻 + Telegram 定时鞭策
+#    见 com.tokenpulse.{widget,nudge} 两个 LaunchAgent
 ```
 
-The widget pins to the top-right. Drag to move, **Esc** or right-click → Quit.
+> **依赖 CodexBar**（[steipete/codexbar](https://github.com/steipete/codexbar)）：session/weekly 额度和价格表都来自它落盘的数据。没装/没开也能跑，只是额度那几栏显示 `—`。
 
-## Telegram
+## 功能一览
 
-Reuses your existing park-io bot — no new token. Credentials load from env
-(`PARKIO_TELEGRAM_BOT_TOKEN` / `PARKIO_TELEGRAM_CHAT_ID`) or
-`~/park-io/secrets/telegram-{bot-token,chat-id}`. Nudges fire only when you're
-behind pace on a plan (or a celebratory summary at the final checkpoint when
-both targets are hit).
+| 功能 | 说明 | 状态 |
+|------|------|------|
+| 今日 token 追踪 | Claude + Codex 两 plan，去重、对标 CodexBar | ✅ |
+| pace 配速 + mood | 对每日 150M 目标算"该到哪 vs 实际到哪"，落后/达标/超额状态机 | ✅ |
+| 真实 session/weekly 额度 | 搭 CodexBar 便车读，带重置倒计时 + 周配速 | ✅ |
+| today/30d cost + 30d tokens | models.dev 单价，新模型家族回退 | ✅ |
+| goad widget (web) | 暗色、drenched 状态反应、count-up、达标 flare、清晨 early 态 | ✅ |
+| Telegram 鞭策 | 落后 pace 或周额度没跟上时推，附"去 resume 哪个 session" | ✅ |
+| 终端 CLI | `--json` / `--sessions` | ✅ |
+| furnace 自动烧额度 | 落后时无人值守派一个队列/循环作业给更落后的 plan | ⚙️ 默认关闭 |
 
-## Config
+## 技术栈
 
-```jsonc
-{
-  "day_boundary": "local",                       // or "utc" to match CodexBar
-  "active_window": { "start": "09:00", "end": "23:59" },  // pace ramps 0→1 across this
-  "targets": {
-    "claude": { "weekday": 150, "weekend": 75 }, // millions of tokens
-    "codex":  { "weekday": 150, "weekend": 75 }
-  },
-  "checkpoints": ["15:00", "20:00", "23:00"],     // nudge times
-  "plan_behind_threshold": 10,                    // weekly-plan behind points
-  "telegram": { "enabled": true },
-  "furnace": {
-    "enabled": false,                             // kill switch; off by default
-    "max_jobs_per_day": 12,
-    "max_runtime_minutes": 30,
-    "default_cwd": "~/work",
-    "telegram": true
-  }
-}
+| 层级 | 技术 | 用途 |
+|------|------|------|
+| 引擎 | Python 3.13 **纯 stdlib** | 日志提取、目标/配速、成本计算（core/limits/cost/cli/nudge 零依赖） |
+| Widget UI | `pywebview` (Cocoa WebKit) + HTML/CSS/JS | 无边框置顶 goad 窗口，~100–200MB，远轻于 Electron |
+| 数据源 | CodexBar 落盘文件 | session/weekly 真实额度 + models.dev 价格缓存 |
+| 常驻 | macOS `launchd` (framework python) | widget + nudge 两个 LaunchAgent |
+| 通知 | Telegram Bot API (openclaw `wendy` bot) | 鞭策推送 |
+
+## 项目结构
+
+```
+tokenpulse/
+├── core.py            # 引擎：token 提取 + 每日目标 + pace + mood
+├── limits.py          # 真实 session/weekly 额度（CodexBar feed）
+├── cost.py            # today/30d cost + tokens（models.dev 定价 + 家族回退）
+├── sessions.py        # 最近 5 天 Claude/Codex 会话 →「去 resume 这个」
+├── webdata.py         # 合并 core/limits/cost → widget 的 JSON 桥
+├── webwidget.py       # pywebview 宿主（无边框置顶）
+├── web/widget.html    # goad UI：状态反应配色 + 动效（自包含 HTML/CSS/JS）
+├── widget.py          # 旧版 Tkinter widget（已被 web 版取代）
+├── nudge.py           # Telegram 鞭策（落后时）
+├── furnace.py / fuel.py   # 可选：无人值守自动烧额度
+├── cli.py             # 终端状态
+├── config.json        # 目标 / 工作窗口 / checkpoints / 阈值 / furnace 开关
+└── tests/             # pytest（42 passing）
 ```
 
-## Furnace
+## 配置
 
-`furnace.enabled` defaults to `false`, so TokenPulse will not launch unattended
-Claude or Codex jobs unless you opt in through config. When enabled, the furnace
-checks the same token pace and weekly-plan pace signals as the nudge path,
-respects the active work window, daily cap, runtime cap, and per-tool locks, then
-dispatches one eligible job to the most-behind tool.
+`config.json`：
 
-Fuel comes from `queue.txt` first, then recurring jobs from `jobs.json`. Use
-`jobs.example.json` as the documented shape for recurring jobs: each entry names
-a prompt, optional preferred tool, cooldown, working directory, and tool/sandbox
-limits. The example is only a job-source template; it does not install launchd
-jobs, edit credentials, or publish anything externally.
+| 字段 | 说明 | 默认 |
+|------|------|------|
+| `targets.{claude,codex}.{weekday,weekend}` | 每日 token 目标（百万） | `150` |
+| `active_window` | pace 配速的"工作窗口"，窗外进 early 态 | `09:00–23:59` |
+| `day_boundary` | 日界：`local`（你的时区）或 `utc`（贴 CodexBar） | `local` |
+| `checkpoints` | Telegram 推送时间点 | `15:00 / 20:00 / 23:00` |
+| `plan_behind_threshold` | 周额度落后多少个百分点才算"落后"并触发推送 | `10` |
+| `furnace.enabled` | 自动烧额度总开关（kill switch） | `false` |
+
+## For AI Agents
+
+TokenPulse 是**本机 CLI / 桌面工具**，不暴露 HTTP API。要把它当数据源用，直接调 CLI 或 import 模块。
+
+### Capability Contract
+
+```yaml
+name: tokenpulse
+capability:
+  summary: Track daily token usage across Claude Code + Codex subscription plans and goad the user to use more.
+  in: local logs (~/.claude/projects, ~/.codex/sessions) + CodexBar's on-disk feed (plan limits + models.dev prices)
+  out: always-on-top "goad" desktop widget + Telegram nudges + CLI status (today tokens vs target, pace, session/weekly %, cost)
+  fail:
+    - "CodexBar not running / data >6h stale → plan limits show — / ⚠stale; token tracking still works"
+    - "model missing from price table → family fallback to latest sibling's rate (not $0)"
+    - "Telegram creds missing → nudge skips, no error"
+    - "outside active window (overnight/pre-09:00) → 'early' state, no false pace verdict"
+cli_command: python3 cli.py
+cli_flags:
+  - name: --json
+    type: boolean
+    description: emit the full status payload as JSON instead of the terminal view
+  - name: --sessions
+    type: boolean
+    description: list recent resumable Claude/Codex sessions
+programmatic_entry: "import webdata; webdata.core_payload()  # merged goal/pace/limits dict; webdata.cost_payload() for cost"
+install_command: "pip3 install --user pywebview   # only needed for the web widget; core/cli/nudge are stdlib"
+start_command: "python3 webwidget.py   # widget  ·  python3 cli.py   # status  ·  python3 nudge.py   # telegram"
+requires: "CodexBar installed & running for session/weekly limits + cost pricing"
+```
+
+### Agent 调用示例
+
+```python
+import subprocess, json
+
+# 拿今日状态的结构化数据
+out = subprocess.run(["python3", "cli.py", "--json"], cwd="~/work/tokenpulse",
+                     capture_output=True, text=True).stdout
+status = json.loads(out)
+combined = status["status"]["combined"]   # {today, target, percent, ...}
+if combined["today"] < combined["expected"]:
+    print(f"Behind pace: {combined['today']/1e6:.0f}M of expected {combined['expected']/1e6:.0f}M")
+
+# 或直接 import（同目录）
+import webdata
+core = webdata.core_payload()             # 目标/配速/额度
+cost = webdata.cost_payload()             # today/30d cost + tokens
+```
+
+## License
+
+Private / personal use.

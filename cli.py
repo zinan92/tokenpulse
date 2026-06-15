@@ -16,6 +16,14 @@ import sessions
 
 MOOD = {"behind": "😴", "ontrack": "🙂", "ahead": "🔥", "done": "✅", "rocket": "🚀"}
 BAR_W = 24
+SESSION_FRAME = (
+    "Sessions: before raw Claude/Codex logs, after a resume shortlist for choosing "
+    "the next AI-work session."
+)
+SESSION_EMPTY = (
+    "Sessions: no recent Claude/Codex sessions found; nothing to resume from the "
+    "last 5 days, so choose by priority."
+)
 
 
 def _bar(frac: float) -> str:
@@ -71,7 +79,12 @@ def main(argv=None):
     args = ap.parse_args(argv)
 
     if args.sessions:
-        for r in sessions.recent_sessions():
+        rows = sessions.recent_sessions()
+        if not rows:
+            print(SESSION_EMPTY)
+            return 0
+        print(SESSION_FRAME)
+        for r in rows:
             snip = f"  — {r['snippet']}" if r["snippet"] else ""
             print(f"[{r['tool']:6}] {r['age']:>8}  {r['name']}{snip}")
         return 0

@@ -95,8 +95,23 @@ def test_sessions_prints_recent_sessions_without_status(monkeypatch, capsys):
     assert cli.main(["--sessions"]) == 0
 
     out = capsys.readouterr().out
+    assert cli.SESSION_FRAME in out
     assert "[codex ]   5m ago  TokenPulse CLI  — pin contract" in out
     assert "[claude]   2h ago  tokenpulse" in out
+
+
+def test_sessions_prints_clear_empty_state(monkeypatch, capsys):
+    def fail_status():
+        raise AssertionError("core.status should not be called for --sessions")
+
+    monkeypatch.setattr(cli.core, "status", fail_status)
+    monkeypatch.setattr(cli.sessions, "recent_sessions", lambda: [])
+
+    assert cli.main(["--sessions"]) == 0
+
+    out = capsys.readouterr().out
+    assert out == cli.SESSION_EMPTY + "\n"
+    assert "[" not in out
 
 
 def test_default_output_contract_with_unavailable_plan(monkeypatch, capsys):

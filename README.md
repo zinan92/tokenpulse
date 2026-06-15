@@ -106,6 +106,10 @@ also includes `operator_summary` and `impact_summary` with the same wording, so
 loop digests and review tools can carry the operator guidance without scraping
 terminal prose.
 
+`python3 cli.py --sessions` is the resume-review contract: it frames raw recent
+Claude/Codex session logs as a shortlist for choosing the next AI-work session,
+and it prints a clear no-recent-sessions state instead of a blank terminal.
+
 The Tkinter widget and web widget show cost lines from `cost.py`: today's cost,
 30-day cost, 30-day tokens, and today's tokens. Pricing depends on the local
 CodexBar model-pricing cache at

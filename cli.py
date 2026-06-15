@@ -72,6 +72,40 @@ def _impact_summary(st: dict) -> str:
     return "Impact: raw quota and pace become a next-session choice: stay on the priority session while runway is healthy."
 
 
+def _product_impact(st: dict) -> dict:
+    tools = list(st["tools"].values())
+    if all(t["hit"] for t in tools):
+        return {
+            "before": "Quota completion was visible, but the next operating move still had to be inferred from counters.",
+            "after": "TokenPulse states the daily target is complete and priority should choose the next AI-work session.",
+            "user_benefit": "Wendy can move from quota checking to priority selection without rereading technical run logs.",
+            "visibility": "operator-visible",
+        }
+    if any(t["mood"] == "behind" for t in tools):
+        return {
+            "before": "Lag was visible as quota and pace numbers, but the operator action was easy to lose in logs.",
+            "after": "TokenPulse turns behind status into a clear prompt to start the next AI-work session now.",
+            "user_benefit": "Wendy can see the catch-up action immediately and recover useful AI-work before the day slips.",
+            "visibility": "operator-visible",
+        }
+    return {
+        "before": "Healthy runway was visible as quota and pace numbers, but the product value was implicit.",
+        "after": "TokenPulse states that runway is healthy and the next session should stay aligned to priority.",
+        "user_benefit": "Wendy can keep work focused on the highest-priority session without treating quota as the bottleneck.",
+        "visibility": "operator-visible",
+    }
+
+
+def _product_impact_line(st: dict) -> str:
+    impact = _product_impact(st)
+    return (
+        "Product impact: "
+        f"before: {impact['before']} "
+        f"after: {impact['after']} "
+        f"benefit: {impact['user_benefit']}"
+    )
+
+
 def main(argv=None):
     ap = argparse.ArgumentParser()
     ap.add_argument("--json", action="store_true")
@@ -97,6 +131,7 @@ def main(argv=None):
             "limits": pl,
             "operator_summary": _operator_summary(st),
             "impact_summary": _impact_summary(st),
+            "product_impact": _product_impact(st),
         }, indent=2, default=str))
         return 0
 
@@ -119,6 +154,7 @@ def main(argv=None):
           f"remaining {core.humanize(c['remaining'])}")
     print(_operator_summary(st))
     print(_impact_summary(st))
+    print(_product_impact_line(st))
     sug = sessions.suggestion()
     if sug and not all(t["hit"] for t in st["tools"].values()):
         print(f"\n▶  resume [{sug['tool']}] {sug['name']} · {sug['age']}")

@@ -22,6 +22,9 @@ HEIGHT = 300
 
 
 class Api:
+    def __init__(self):
+        self.window = None
+
     def core(self) -> str:
         try:
             return json.dumps(webdata.core_payload(), default=str)
@@ -34,6 +37,17 @@ class Api:
         except Exception as exc:  # noqa: BLE001
             return json.dumps({"error": str(exc)})
 
+    def fit(self, height) -> bool:
+        """Resize the window to the content height the UI measured — so nothing
+        (e.g. the '$2,690' cost number) ever gets clipped by a fixed height."""
+        try:
+            h = max(180, min(900, int(round(float(height)))))
+            if self.window is not None:
+                self.window.resize(WIDTH, h)
+            return True
+        except Exception:  # noqa: BLE001
+            return False
+
 
 def _on_start(window):
     pass  # position is set at create time; easy_drag handles repositioning
@@ -44,10 +58,11 @@ def _on_start(window):
 def main():
     x = int(os.environ.get("TOKENPULSE_X", 2200))
     y = int(os.environ.get("TOKENPULSE_Y", 48))
+    api = Api()
     window = webview.create_window(
         "TokenPulse",
         url=HTML,
-        js_api=Api(),
+        js_api=api,
         width=WIDTH,
         height=HEIGHT,
         x=x,
@@ -55,9 +70,10 @@ def main():
         frameless=True,
         easy_drag=True,
         on_top=True,
-        resizable=False,
+        resizable=True,  # frameless => no visible handles; needed for api.fit()
         background_color="#0e1118",
     )
+    api.window = window
     webview.start(_on_start, window)
 
 

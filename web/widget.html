@@ -147,6 +147,10 @@
   }
   .tool:hover .detail { opacity: 1; }
   .detail .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 2px 14px; }
+  /* short windows share a row; the long cost/30d lines get the full width and
+     never wrap (so "$2,690" can't be pushed to a clipped third line) */
+  .detail .grid > div { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  #claude-cost, #codex-cost, #claude-tok, #codex-tok { grid-column: 1 / -1; }
   .detail b { color: var(--ink-dim); font-weight: 600; }
 
   .stale { color: var(--alarm); font-size: 10px; }
@@ -295,14 +299,33 @@
     }
   }
 
+  // Resize the window to the actual content height so a long cost/30d line (or
+  // a wrapped goad line) is never clipped by a fixed window height.
+  let _lastH = 0;
+  function fitWindow() {
+    try {
+      const tools = document.querySelector(".tools");
+      if (!tools) return;
+      const h = Math.ceil(tools.getBoundingClientRect().bottom) + 15; // + frame bottom pad
+      if (Math.abs(h - _lastH) >= 2 && window.pywebview && window.pywebview.api.fit) {
+        _lastH = h;
+        window.pywebview.api.fit(h);
+      }
+    } catch (e) {}
+  }
+
   async function tick() {
     try {
       const core = await window.pywebview.api.core();
       renderCore(JSON.parse(core));
+      setTimeout(fitWindow, 40);   // let layout settle, then size the window
     } catch (e) { $("goad").textContent = "data error: " + e; }
   }
   async function tickCost() {
-    try { renderCost(JSON.parse(await window.pywebview.api.cost())); } catch (e) {}
+    try {
+      renderCost(JSON.parse(await window.pywebview.api.cost()));
+      setTimeout(fitWindow, 40);
+    } catch (e) {}
   }
 
   function start() {

@@ -13,7 +13,7 @@ from pathlib import Path
 import core
 
 CONFIG_PATH = Path(__file__).with_name("config.json")
-EDITABLE = ("targets",)  # only the daily token target is user-editable
+EDITABLE = ("targets", "handle")  # daily target + share-card handle
 
 
 def load_raw() -> dict:
@@ -41,6 +41,9 @@ def validate_partial(p: dict) -> list[str]:
                 v = (t.get(tool) or {}).get(k)
                 if v is not None and (not isinstance(v, (int, float)) or v <= 0 or v > 100000):
                     errs.append(f"目标 {tool}.{k}")
+    h = p.get("handle")
+    if h is not None and (not isinstance(h, str) or len(h.lstrip("@")) > 40):
+        errs.append("handle")
     return errs
 
 

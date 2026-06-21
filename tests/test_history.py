@@ -86,3 +86,24 @@ def test_daily_tokens_buckets_by_local_day_and_dedupes(tmp_path, monkeypatch):
     assert by["2026-06-12"]["claude"] == 40
     assert len(out["series"]) == 30
     assert out["series"][-1]["date"] == NOW.astimezone().date().isoformat()  # today is last
+
+
+def test_lifetime_records(monkeypatch):
+    """All-time record day + best streak over the full persisted cache."""
+    M = 1_000_000
+    cache = {
+        "claude": {"2026-06-01": 200 * M, "2026-06-02": 200 * M, "2026-06-03": 50 * M,
+                   "2026-06-04": 400 * M, "2026-06-05": 200 * M},
+        "codex": {"2026-06-01": 200 * M, "2026-06-02": 200 * M, "2026-06-03": 50 * M,
+                  "2026-06-04": 400 * M, "2026-06-05": 200 * M},
+    }
+    monkeypatch.setattr(history, "_load_disk", lambda: cache)
+    cfg = {"targets": {"claude": {"weekday": 150, "weekend": 150},
+                       "codex": {"weekday": 150, "weekend": 150}}}  # combined 300M
+    now = datetime(2026, 6, 6, 12, tzinfo=timezone.utc)
+    r = history.lifetime_records(now=now, config=cfg)
+    # combined daily: 400,400,100,800,400M ; target 300M -> hits H,H,-,H,H -> best run 2
+    assert r["record_day"] == {"date": "2026-06-04", "total": 800 * M}
+    assert r["best_streak"] == 2
+    assert r["days_tracked"] == 5
+    assert r["lifetime_tokens"] == (400 + 400 + 100 + 800 + 400) * M

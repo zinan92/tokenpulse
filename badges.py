@@ -67,22 +67,26 @@ def _highest(thresholds, value):
 def card_data(now: datetime | None = None, config: dict | None = None) -> dict:
     """Everything the egg/badge UI and the share card render from."""
     p = history.panel_data(now=now, config=config)
+    rec = history.lifetime_records(now=now, config=config)
     costs = {t: cost.usage_summary(t) for t in ("claude", "codex")}
     monthly_tokens = costs["claude"]["tokens_30d"] + costs["codex"]["tokens_30d"]
     monthly_cost = round(costs["claude"]["cost_30d"] + costs["codex"]["cost_30d"], 2)
     streak = p["streak"]
-    best_streak = _best_streak(p["series"], p["combined_target"])
+    best_streak = rec["best_streak"]          # all-time, from the persisted cache
+    record_day = rec["record_day"]            # all-time single-day high
 
+    # badge pool (the card prepends the current-streak chip and caps at 4)
     badges = []
-    sm = _highest(STREAK_MILESTONES, streak)
-    if sm:
-        badges.append({"icon": "🔥", "label": f"{sm}-day streak"})
-    tm = _highest(TOKEN_MILESTONES, monthly_tokens)
-    if tm:
-        badges.append({"icon": "⚡", "label": f"{tm} tokens/mo"})
+    if best_streak >= 3 and best_streak > streak:  # only when it beats the current run
+        badges.append({"icon": "🏆", "label": f"best {best_streak}d"})
+    if record_day and record_day["total"] > 0:
+        badges.append({"icon": "💥", "label": f"record {cost.humanize_tokens(record_day['total'])}"})
     cm = _highest(COST_MILESTONES, monthly_cost)
     if cm:
-        badges.append({"icon": "💰", "label": f"{cm}/mo value"})
+        badges.append({"icon": "💰", "label": f"{cm}/mo"})
+    tm = _highest(TOKEN_MILESTONES, monthly_tokens)
+    if tm:
+        badges.append({"icon": "⚡", "label": f"{tm} tok/mo"})
 
     return {
         "tier": _tier(monthly_tokens),
@@ -90,7 +94,9 @@ def card_data(now: datetime | None = None, config: dict | None = None) -> dict:
         "monthly_cost": monthly_cost,
         "streak": streak,
         "best_streak": best_streak,
-        "best_day": p.get("best"),
+        "record_day": record_day,
+        "best_day": p.get("best"),          # 30-day best (for the panel)
+        "days_tracked": rec["days_tracked"],
         "avg": p["avg"],
         "hit_days": p["hit_days"],
         "total_days": p["total_days"],

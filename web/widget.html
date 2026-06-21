@@ -214,6 +214,8 @@
     -webkit-user-select: text; user-select: text;
   }
   .srow input.wide { width: 54px; }
+  .srow input.wider { width: 96px; }
+  .srow .at { color: var(--ink-faint); margin-right: -3px; }
   .srow input:focus { outline: none; border-color: var(--heat); }
   #s-save { background: var(--heat-soft); color: var(--heat); border: 1px solid transparent;
             border-radius: 6px; padding: 4px 16px; font-size: 11px; font-weight: 700;
@@ -238,6 +240,8 @@
   .egg-prog { height: 4px; border-radius: 3px; background: var(--track); margin-top: 9px; overflow: hidden; }
   .egg-prog-f { height: 100%; width: 0; background: var(--heat); border-radius: 3px;
     transition: width 0.6s var(--ease); }
+  .egg-records { font-size: 10.5px; color: var(--ink-faint); margin-top: 7px; display: flex; gap: 12px; }
+  .egg-records b { color: var(--ink-dim); font-weight: 700; }
 
   @media (prefers-reduced-motion: reduce) {
     * { animation: none !important; transition-duration: 0.01ms !important; }
@@ -297,6 +301,7 @@
           <button id="share-btn" class="share-btn">分享战绩卡 ↗</button>
         </div>
         <div class="egg-prog"><div class="egg-prog-f" id="egg-prog-f"></div></div>
+        <div class="egg-records" id="egg-records"></div>
       </div>
       <div class="psec">
         <div class="ptitle">今日活跃 (会话)</div>
@@ -312,6 +317,8 @@
         <div class="srow"><span class="slbl">每日目标 M</span>
           <input id="s-tc" type="number" min="1"><i>Claude</i>
           <input id="s-tx" type="number" min="1"><i>Codex</i></div>
+        <div class="srow"><span class="slbl">分享名</span>
+          <span class="at">@</span><input id="s-handle" class="wider" placeholder="yourhandle"><i>战绩卡署名</i></div>
         <div class="srow"><button id="s-save">保存</button>
           <span id="s-msg" class="smsg"></span></div>
       </div>
@@ -463,6 +470,9 @@
       const sk = b.streak > 0 ? ` · 🔥${b.streak}` : "";
       $("egg-sub").innerHTML = `<b>${tok(b.monthly_tokens)}</b>/mo${sk} · ${nx}`;
       $("egg-prog-f").style.width = Math.round((b.tier.progress_to_next ?? 1) * 100) + "%";
+      const rec = b.record_day ? `💥 史上最高日 <b>${tok(b.record_day.total)}</b>` : "";
+      const bs = b.best_streak > 0 ? `🏆 最佳连续 <b>${b.best_streak}天</b>` : "";
+      $("egg-records").innerHTML = [bs, rec].filter(Boolean).map(s => `<span>${s}</span>`).join("");
     } catch (e) {}
   }
   async function shareCard() {
@@ -481,6 +491,7 @@
     const t = c.targets || {};
     $("s-tc").value = (t.claude || {}).weekday ?? "";
     $("s-tx").value = (t.codex || {}).weekday ?? "";
+    $("s-handle").value = (c.handle || "").replace(/^@/, "");
   }
   async function loadConfig() {
     try { populateSettings(JSON.parse(await window.pywebview.api.config())); } catch (e) {}
@@ -494,6 +505,7 @@
     const partial = {};
     if (tc !== undefined) (partial.targets ??= {}).claude = { weekday: tc, weekend: tc };
     if (tx !== undefined) (partial.targets ??= {}).codex = { weekday: tx, weekend: tx };
+    partial.handle = $("s-handle").value.trim().replace(/^@/, "");  // empty -> default
     try {
       const r = JSON.parse(await window.pywebview.api.save_config(JSON.stringify(partial)));
       if (r.ok) {

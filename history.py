@@ -289,6 +289,30 @@ def streak_and_best(series: list, target: int) -> dict:
     }
 
 
+def lifetime_records(now: datetime | None = None, config: dict | None = None) -> dict:
+    """All-time records from the persisted daily cache (grows as the widget runs,
+    up to PRUNE_DAYS): the single best day and the longest target-hit streak ever.
+    Reads the cache only — no scan."""
+    now = now or datetime.now().astimezone()
+    config = config or core.load_config()
+    cache = _load_disk()
+    dates = sorted(set(cache["claude"]) | set(cache["codex"]))
+    target = (core.target_for(now.date(), config, "claude")
+              + core.target_for(now.date(), config, "codex"))
+    series = [{"date": d, "total": cache["claude"].get(d, 0) + cache["codex"].get(d, 0)} for d in dates]
+    record = max(series, key=lambda r: r["total"], default=None)
+    best = cur = 0
+    for r in series:
+        cur = cur + 1 if r["total"] >= target else 0
+        best = max(best, cur)
+    return {
+        "record_day": ({"date": record["date"], "total": record["total"]} if record else None),
+        "best_streak": best,
+        "days_tracked": len(series),
+        "lifetime_tokens": sum(r["total"] for r in series),
+    }
+
+
 def panel_data(now: datetime | None = None, config: dict | None = None,
                days: int = 30, ttl: int = DEFAULT_TTL) -> dict:
     """Everything the expand panel needs (TTL-cached — the 30-day scan is heavy)."""

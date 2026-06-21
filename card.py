@@ -72,10 +72,19 @@ def _glow(size, xy, radius, color, alpha):
     return g.filter(ImageFilter.GaussianBlur(radius * 0.55))
 
 
+def _git_handle() -> str | None:
+    import subprocess
+    try:
+        out = subprocess.run(["git", "config", "user.name"], capture_output=True,
+                             text=True, timeout=2).stdout.strip()
+        return out or None
+    except Exception:  # noqa: BLE001
+        return None
+
+
 def render(data: dict, out_path: str = OUT_DEFAULT, handle: str | None = None) -> str:
-    handle = handle or core.load_config().get("handle") or "you"
-    if not handle.startswith("@"):
-        handle = "@" + handle
+    handle = (handle or core.load_config().get("handle") or _git_handle() or "you").lstrip("@")
+    handle = "@" + handle
 
     img = Image.new("RGB", (W, H), BG)
     # heat glow top-right + faint base gradient
@@ -128,7 +137,7 @@ def render(data: dict, out_path: str = OUT_DEFAULT, handle: str | None = None) -
                             fill=HEAT if hit else TRACK)
     d.text((sx, sy + sh + 8),
            f"30 days   ·   hit {data['hit_days']}/{data['total_days']}   ·   "
-           f"avg {_tok(data['avg'])}   ·   best {_tok((data['best_day'] or {}).get('total', 0))}",
+           f"avg {_tok(data['avg'])}   ·   peak {_tok((data['best_day'] or {}).get('total', 0))}",
            font=_font(SANS, 15), fill=FAINT)
 
     # ── streak + badges row ──

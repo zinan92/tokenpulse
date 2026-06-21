@@ -42,9 +42,13 @@ def test_highest_milestone():
 def test_card_data_shape(monkeypatch):
     monkeypatch.setattr(badges.history, "panel_data", lambda now=None, config=None: {
         "series": [{"date": "2026-06-13", "total": 6 * B}],
-        "streak": 12, "hit_days": 20, "total_days": 30, "avg": 200 * M,
+        "streak": 4, "hit_days": 20, "total_days": 30, "avg": 200 * M,
         "best": {"date": "2026-05-26", "total": 746 * M}, "active_today": {"claude": 60, "codex": 90},
         "combined_target": 300 * M,
+    })
+    monkeypatch.setattr(badges.history, "lifetime_records", lambda now=None, config=None: {
+        "record_day": {"date": "2026-05-26", "total": 980 * M}, "best_streak": 9,
+        "days_tracked": 42, "lifetime_tokens": 12 * B,
     })
     monkeypatch.setattr(badges.cost, "usage_summary",
                         lambda t: {"tokens_30d": 3 * B, "cost_30d": 2800.0})
@@ -52,5 +56,9 @@ def test_card_data_shape(monkeypatch):
     assert d["tier"]["name"] == "Raptor"          # 6B combined
     assert d["monthly_tokens"] == 6 * B
     assert d["monthly_cost"] == 5600.0
-    assert any("streak" in b["label"] for b in d["badges"])
-    assert d["best_streak"] == 1
+    assert d["best_streak"] == 9                   # all-time, from lifetime_records
+    assert d["record_day"]["total"] == 980 * M
+    labels = [b["label"] for b in d["badges"]]
+    assert "best 9d" in labels                     # best_streak (9) > current (4)
+    assert any("record" in l for l in labels)
+    assert any(l.startswith("$") for l in labels)  # $5,600/mo

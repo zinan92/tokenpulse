@@ -223,6 +223,22 @@
   .smsg.ok { color: var(--heat); }
   .smsg.err { color: var(--alarm); }
 
+  /* egg / tier */
+  .eggsec { border-bottom: 1px solid var(--track); padding-bottom: 11px; }
+  .eggrow { display: flex; align-items: center; gap: 10px; }
+  .egg-emo { font-size: 30px; line-height: 1; filter: drop-shadow(0 0 10px var(--heat-soft)); }
+  .egg-txt { flex: 1; min-width: 0; }
+  .egg-name { font-size: 15px; font-weight: 700; color: var(--ink); letter-spacing: 0.02em; }
+  .egg-sub { font-size: 10.5px; color: var(--ink-faint); margin-top: 1px; }
+  .egg-sub b { color: var(--heat); font-weight: 700; }
+  .share-btn { background: var(--heat); color: #1a1100; border: none; border-radius: 7px;
+    padding: 6px 12px; font-size: 11px; font-weight: 700; cursor: pointer; white-space: nowrap;
+    box-shadow: 0 0 16px -6px var(--heat); transition: filter 0.2s; }
+  .share-btn:hover { filter: brightness(1.1); }
+  .egg-prog { height: 4px; border-radius: 3px; background: var(--track); margin-top: 9px; overflow: hidden; }
+  .egg-prog-f { height: 100%; width: 0; background: var(--heat); border-radius: 3px;
+    transition: width 0.6s var(--ease); }
+
   @media (prefers-reduced-motion: reduce) {
     * { animation: none !important; transition-duration: 0.01ms !important; }
   }
@@ -271,6 +287,17 @@
     </div>
 
     <div class="panel" id="panel" hidden>
+      <div class="psec eggsec">
+        <div class="eggrow">
+          <span class="egg-emo" id="egg-emo">🥚</span>
+          <div class="egg-txt">
+            <div class="egg-name" id="egg-name">—</div>
+            <div class="egg-sub" id="egg-sub">—</div>
+          </div>
+          <button id="share-btn" class="share-btn">分享战绩卡 ↗</button>
+        </div>
+        <div class="egg-prog"><div class="egg-prog-f" id="egg-prog-f"></div></div>
+      </div>
       <div class="psec">
         <div class="ptitle">今日活跃 (会话)</div>
         <div class="active" id="active-line">统计中…</div>
@@ -417,9 +444,35 @@
   }
   async function loadPanel() {
     loadConfig();   // keep the settings inputs in sync whenever the panel loads
+    loadBadges();
     try { renderPanel(JSON.parse(await window.pywebview.api.panel())); }
     catch (e) {}
     setTimeout(fitWindow, 40);
+  }
+
+  // ── egg tier + share ──
+  async function loadBadges() {
+    try {
+      const b = JSON.parse(await window.pywebview.api.badges());
+      if (!b || b.error) return;
+      $("egg-emo").textContent = b.tier.emoji;
+      $("egg-name").textContent = b.tier.name;
+      const nx = b.tier.next
+        ? `${Math.round((b.tier.progress_to_next || 0) * 100)}% to ${b.tier.next.name}`
+        : "max tier 🐉";
+      const sk = b.streak > 0 ? ` · 🔥${b.streak}` : "";
+      $("egg-sub").innerHTML = `<b>${tok(b.monthly_tokens)}</b>/mo${sk} · ${nx}`;
+      $("egg-prog-f").style.width = Math.round((b.tier.progress_to_next ?? 1) * 100) + "%";
+    } catch (e) {}
+  }
+  async function shareCard() {
+    const btn = $("share-btn"), orig = "分享战绩卡 ↗";
+    btn.textContent = "生成中…"; btn.disabled = true;
+    try {
+      const r = JSON.parse(await window.pywebview.api.share_card());
+      btn.textContent = r.ok ? "已生成 ✓ (Finder)" : "失败";
+    } catch (e) { btn.textContent = "失败"; }
+    setTimeout(() => { btn.textContent = orig; btn.disabled = false; }, 3500);
   }
 
   // ── settings ──
@@ -500,6 +553,7 @@
     // interactions inside the panel (settings inputs/button) must not drag the window
     $("panel").addEventListener("mousedown", e => e.stopPropagation());
     $("s-save").addEventListener("click", e => { e.stopPropagation(); saveSettings(); });
+    $("share-btn").addEventListener("click", e => { e.stopPropagation(); shareCard(); });
     loadConfig();   // populate the settings inputs up front (cheap, not gated on the panel scan)
     tick();
     tickCost();

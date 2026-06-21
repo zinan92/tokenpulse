@@ -16,6 +16,10 @@ import time
 
 import webview
 
+import subprocess
+
+import badges
+import card
 import configio
 import cost
 import history
@@ -47,6 +51,21 @@ class Api:
             return json.dumps(webdata.panel_payload(), default=str)
         except Exception as exc:  # noqa: BLE001
             return json.dumps({"error": str(exc)})
+
+    def badges(self) -> str:
+        try:
+            return json.dumps(badges.card_data(), default=str)
+        except Exception as exc:  # noqa: BLE001
+            return json.dumps({"error": str(exc)})
+
+    def share_card(self) -> str:
+        """Render the shareable value-card PNG and reveal it in Finder."""
+        try:
+            path = card.make_card()
+            subprocess.Popen(["open", "-R", path])  # reveal in Finder, ready to drag/share
+            return json.dumps({"ok": True, "path": path})
+        except Exception as exc:  # noqa: BLE001
+            return json.dumps({"ok": False, "error": str(exc)})
 
     def config(self) -> str:
         try:
@@ -81,10 +100,12 @@ def _warm_loop():
     time.sleep(25)  # let the first paint (core/cost/limits) finish uncontended
     while True:
         try:
-            history.panel_data(ttl=0)          # refresh the panel cache (~2.6s warm)
+            history.panel_data(ttl=0)          # panel + egg/badges (share card)
+            cost.usage_summary("claude", ttl=0)  # keep cost warm so badges is instant
+            cost.usage_summary("codex", ttl=0)
         except Exception:  # noqa: BLE001
             pass
-        time.sleep(540)  # ~9 min, just under the 10-min in-memory TTL
+        time.sleep(480)  # ~8 min, under the 10-min in-memory TTL
 
 
 def _on_start(window):

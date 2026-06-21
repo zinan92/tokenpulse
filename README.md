@@ -81,11 +81,11 @@ resume [codex] 整理GitHub仓库三条管线 · 6h ago
    常驻 goad widget                                 fuel.py (取料)
 ```
 
-数据口径都对标过 CodexBar 并逐字段验证：
+数据口径逐字段验证：
 
 - **Token 计数** — Claude 按 `(message.id, requestId)` 去重（修正 transcript 重复写入导致的虚高，~485M → 真实 ~200M）；Codex 按 session UUID 去重、累加每轮 `last_token_usage`。
-- **真实额度** — session/weekly 的 % 在本地 Claude 文件里**没有**，Anthropic 只通过 OAuth 接口暴露。`limits.py` 不自己掏 keychain、不逆向接口，而是**搭 CodexBar 的便车**读它落盘的结果（约每小时刷新）。需要 CodexBar 在运行。
-- **成本** — `tokens × models.dev 单价`，用的就是 CodexBar 缓存的同一张价格表；新模型缺表时家族回退到最新同族费率（实测 Claude 30d cost $1,830 ≈ CodexBar $1,817）。
+- **成本** — `tokens × models.dev 单价`，**直连 [models.dev](https://models.dev) 拉价格表**（每日本地缓存），新模型缺表时家族回退到最新同族费率。**不依赖 CodexBar**。
+- **真实额度** — **Codex** 的 5h/周 % 直接读本地 `~/.codex` session 的 `payload.rate_limits`，无需 CodexBar。**Claude** 的 5h/周/opus % 只在 Anthropic 的 OAuth 接口里（token 需刷新、自己刷有把你登出 Claude Code 的风险），所以**当 CodexBar 在跑时**读它落盘的结果；没装也行，Claude 那两栏显示 `—`，其它全正常。**CodexBar 是可选增强，不是必需。**
 
 ## 快速开始
 
@@ -107,18 +107,19 @@ python3 webwidget.py
 #    见 com.tokenpulse.{widget,nudge} 两个 LaunchAgent
 ```
 
-> **依赖 CodexBar**（[steipete/codexbar](https://github.com/steipete/codexbar)）：session/weekly 额度和价格表都来自它落盘的数据。没装/没开也能跑，只是额度那几栏显示 `—`。
+> **CodexBar 可选**（[steipete/codexbar](https://github.com/steipete/codexbar)）：只用于 **Claude** 的 session/weekly % 那两栏。没装也能跑——token、cost、Codex 额度全部正常，Claude 额度那两栏显示 `—`。
 
 ## 功能一览
 
 | 功能 | 说明 | 状态 |
 |------|------|------|
-| 今日 token 追踪 | Claude + Codex 两 plan，去重、对标 CodexBar | ✅ |
-| pace 配速 + mood | 对每日 150M 目标算"该到哪 vs 实际到哪"，落后/达标/超额状态机 | ✅ |
-| 真实 session/weekly 额度 | 搭 CodexBar 便车读，带重置倒计时 + 周配速 | ✅ |
-| today/30d cost + 30d tokens | models.dev 单价，新模型家族回退 | ✅ |
-| goad widget (web) | 暗色、drenched 状态反应、count-up、达标 flare、清晨 early 态 | ✅ |
-| Telegram 鞭策 | 落后 pace 或周额度没跟上时推，附"去 resume 哪个 session" | ✅ |
+| 今日 token 追踪 | Claude + Codex 两 plan，去重 | ✅ |
+| pace 配速 + mood | 本地 24h 为窗口算"该到哪 vs 实际到哪"，落后/达标/超额状态机 | ✅ |
+| 真实 session/weekly 额度 | Codex 直读本地；Claude 经可选 CodexBar；带重置倒计时 + 周配速 | ✅ |
+| today/30d cost + 30d tokens | models.dev 单价**直连**，新模型家族回退 | ✅ |
+| **🥚 egg 等级 + 徽章 + 战绩卡** | 按月用量孵化等级、streak、可分享 PNG（`badges.py` / `card.py`） | ✅ |
+| goad widget (web) | 暗色、drenched 状态反应、count-up、达标 flare、点开详情面板 | ✅ |
+| Telegram 鞭策 | 落后 pace 或周额度没跟上时推 | ✅ |
 | 终端 CLI | `--json` / `--sessions` | ✅ |
 | furnace 自动烧额度 | 落后时无人值守派一个队列/循环作业给更落后的 plan | ⚙️ 默认关闭 |
 
@@ -192,7 +193,7 @@ cli_flags:
 programmatic_entry: "import webdata; webdata.core_payload()  # merged goal/pace/limits dict; webdata.cost_payload() for cost"
 install_command: "pip3 install --user pywebview   # only needed for the web widget; core/cli/nudge are stdlib"
 start_command: "python3 webwidget.py   # widget  ·  python3 cli.py   # status  ·  python3 nudge.py   # telegram"
-requires: "CodexBar installed & running for session/weekly limits + cost pricing"
+requires: "nothing external for core (tokens/cost via models.dev, Codex limits local); CodexBar optional, only for Claude's session/weekly %"
 ```
 
 ### Agent 调用示例

@@ -16,6 +16,7 @@ from datetime import datetime
 
 import core
 import cost
+import history
 import limits
 
 TOOLS = ("claude", "codex")
@@ -116,6 +117,13 @@ def cost_payload(config: dict | None = None) -> dict:
     return out
 
 
+def panel_payload(config: dict | None = None) -> dict:
+    """30-day usage series + today's active time + streak/best — for the expand
+    panel. Heavy (30-day scan); TTL-cached inside history.panel_data()."""
+    return history.panel_data(config=config)
+
+
 if __name__ == "__main__":
     import json
-    print(json.dumps({"core": core_payload(), "cost": cost_payload()}, indent=2, default=str))
+    print(json.dumps({"core": core_payload(), "cost": cost_payload(),
+                      "panel": panel_payload()}, indent=2, default=str))

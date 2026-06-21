@@ -2,3 +2,6 @@
 __pycache__/
 *.pyc
 .DS_Store
+.history-cache.json
+furnace-state.json
+furnace-*.lock

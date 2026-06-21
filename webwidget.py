@@ -11,9 +11,13 @@ from __future__ import annotations
 
 import json
 import os
+import threading
+import time
 
 import webview
 
+import cost
+import history
 import webdata
 
 HTML = os.path.join(os.path.dirname(os.path.abspath(__file__)), "web", "widget.html")
@@ -37,6 +41,12 @@ class Api:
         except Exception as exc:  # noqa: BLE001
             return json.dumps({"error": str(exc)})
 
+    def panel(self) -> str:
+        try:
+            return json.dumps(webdata.panel_payload(), default=str)
+        except Exception as exc:  # noqa: BLE001
+            return json.dumps({"error": str(exc)})
+
     def fit(self, height) -> bool:
         """Resize the window to the content height the UI measured — so nothing
         (e.g. the '$2,690' cost number) ever gets clipped by a fixed height."""
@@ -49,8 +59,24 @@ class Api:
             return False
 
 
+def _warm_loop():
+    """Keep the heavy 30-day panel scan (and cost) pre-cached in the background
+    so opening the detail panel is instant, not a 14s wait."""
+    first = True
+    while True:
+        try:
+            history.panel_data(ttl=0)          # refresh the panel cache (~2.6s warm)
+            if first:
+                cost.usage_summary("claude")   # prewarm cost so the detail fills fast
+                cost.usage_summary("codex")
+                first = False
+        except Exception:  # noqa: BLE001
+            pass
+        time.sleep(540)  # ~9 min, just under the 10-min in-memory TTL
+
+
 def _on_start(window):
-    pass  # position is set at create time; easy_drag handles repositioning
+    threading.Thread(target=_warm_loop, daemon=True).start()
 
 
 # pywebview's window X maps to this machine's top-right ~(2104) on the main

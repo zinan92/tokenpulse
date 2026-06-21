@@ -175,6 +175,31 @@
   }
   .flare { animation: flare 0.7s var(--ease); }
 
+  /* ── expand panel ── */
+  .hright { display: flex; align-items: center; gap: 8px; }
+  .chev { cursor: pointer; color: var(--ink-faint); font-size: 12px; padding: 0 2px;
+          transition: transform 0.3s var(--ease), color 0.2s; }
+  .chev:hover { color: var(--ink); }
+  .chev.open { transform: rotate(180deg); color: var(--heat); }
+  .panel { margin-top: 13px; padding-top: 12px; border-top: 1px solid var(--track); }
+  .psec { margin-bottom: 13px; }
+  .psec:last-child { margin-bottom: 0; }
+  .ptitle { font-size: 9.5px; letter-spacing: 0.12em; text-transform: uppercase;
+            color: var(--ink-faint); margin-bottom: 7px; }
+  .psub { text-transform: none; letter-spacing: 0; color: var(--heat); font-weight: 700; }
+  .active { font-size: 13px; color: var(--ink); }
+  .active b { color: var(--heat); font-weight: 700; font-family: "SF Mono", Menlo, monospace; }
+  .active .sep { color: var(--ink-faint); margin: 0 9px; }
+  .chart { position: relative; height: 56px; display: flex; align-items: flex-end; gap: 1.5px; }
+  .chart .b { flex: 1 1 0; min-width: 0; background: var(--track);
+              border-radius: 1.5px 1.5px 0 0; transition: height 0.5s var(--ease); }
+  .chart .b.hit { background: var(--heat); box-shadow: 0 0 6px -2px var(--heat); }
+  .chart .tline { position: absolute; left: 0; right: 0; height: 0;
+                  border-top: 1px dashed var(--ink-dim); opacity: 0.55; }
+  .cstats { font-size: 10.5px; color: var(--ink-faint); margin-top: 7px;
+            display: flex; flex-wrap: wrap; gap: 2px 13px; }
+  .cstats b { color: var(--ink-dim); font-weight: 600; }
+
   @media (prefers-reduced-motion: reduce) {
     * { animation: none !important; transition-duration: 0.01ms !important; }
   }
@@ -184,7 +209,10 @@
   <div class="frame" id="frame">
     <header>
       <div class="brand"><span class="spark"></span> TOKENPULSE</div>
-      <div class="clock mono" id="clock">—</div>
+      <div class="hright">
+        <span class="clock mono" id="clock">—</span>
+        <span class="chev" id="chev" title="月度详情">▾</span>
+      </div>
     </header>
 
     <section class="hero">
@@ -216,6 +244,18 @@
           <div id="codex-sess"><b>Sess</b> —</div><div id="codex-week"><b>Week</b> —</div>
           <div id="codex-cost"><b>cost</b> …</div><div id="codex-tok"><b>30d</b> …</div>
         </div></div>
+      </div>
+    </div>
+
+    <div class="panel" id="panel" hidden>
+      <div class="psec">
+        <div class="ptitle">今日活跃 (会话)</div>
+        <div class="active" id="active-line">统计中…</div>
+      </div>
+      <div class="psec">
+        <div class="ptitle">过去 30 天 <span class="psub" id="streak-line"></span></div>
+        <div class="chart" id="chart"></div>
+        <div class="cstats" id="cstats"></div>
       </div>
     </div>
   </div>
@@ -312,14 +352,61 @@
     }
   }
 
-  // Resize the window to the actual content height so a long cost/30d line (or
-  // a wrapped goad line) is never clipped by a fixed window height.
+  // ── expand panel: 30-day chart + today's active time ──
+  function hm(mins) {
+    mins = mins | 0;
+    const h = Math.floor(mins / 60), m = mins % 60;
+    return h ? `${h}h${m}m` : `${m}m`;
+  }
+  function renderPanel(p) {
+    if (!p || p.error) { $("active-line").textContent = "暂无数据"; return; }
+    const a = p.active_today || { claude: 0, codex: 0 };
+    $("active-line").innerHTML =
+      `Claude <b>${hm(a.claude)}</b><span class="sep">·</span>Codex <b>${hm(a.codex)}</b>`;
+    $("streak-line").textContent = p.streak > 0 ? `· 连续达标 ${p.streak} 天 🔥` : "";
+    const tgt = p.combined_target || 1;
+    const maxV = Math.max(tgt, ...p.series.map(r => r.total)) || 1;
+    const chart = $("chart");
+    chart.innerHTML = "";
+    const tline = document.createElement("div");
+    tline.className = "tline";
+    tline.style.bottom = (tgt / maxV * 100) + "%";
+    tline.title = "目标 " + tok(tgt);
+    chart.appendChild(tline);
+    for (const r of p.series) {
+      const b = document.createElement("div");
+      b.className = "b" + (r.total >= tgt ? " hit" : "");
+      b.style.height = Math.max(2, r.total / maxV * 100) + "%";
+      b.title = `${r.date.slice(5)}: ${tok(r.total)}`;
+      chart.appendChild(b);
+    }
+    $("cstats").innerHTML =
+      `<span><b>达标</b> ${p.hit_days}/${p.total_days} 天</span>` +
+      `<span><b>日均</b> ${tok(p.avg)}</span>` +
+      (p.best ? `<span><b>最高</b> ${tok(p.best.total)} (${p.best.date.slice(5)})</span>` : "");
+  }
+  async function loadPanel() {
+    try { renderPanel(JSON.parse(await window.pywebview.api.panel())); }
+    catch (e) {}
+    setTimeout(fitWindow, 40);
+  }
+  function panelOpen() { const p = $("panel"); return p && !p.hidden; }
+  function togglePanel() {
+    const p = $("panel"), open = p.hidden;
+    p.hidden = !open;
+    $("chev").classList.toggle("open", open);
+    if (open) loadPanel();
+    setTimeout(fitWindow, 40);
+  }
+
+  // Resize the window to the actual content height so nothing (long cost line,
+  // wrapped goad, or the expanded panel) is ever clipped by a fixed height.
   let _lastH = 0;
   function fitWindow() {
     try {
-      const tools = document.querySelector(".tools");
-      if (!tools) return;
-      const h = Math.ceil(tools.getBoundingClientRect().bottom) + 15; // + frame bottom pad
+      const el = panelOpen() ? $("panel") : document.querySelector(".tools");
+      if (!el) return;
+      const h = Math.ceil(el.getBoundingClientRect().bottom) + 15; // + frame bottom pad
       if (Math.abs(h - _lastH) >= 2 && window.pywebview && window.pywebview.api.fit) {
         _lastH = h;
         window.pywebview.api.fit(h);
@@ -337,11 +424,16 @@
   async function tickCost() {
     try {
       renderCost(JSON.parse(await window.pywebview.api.cost()));
+      if (panelOpen()) loadPanel();
       setTimeout(fitWindow, 40);
     } catch (e) {}
   }
 
   function start() {
+    // chevron toggles the panel; stop the click/drag from moving the window
+    const chev = $("chev");
+    chev.addEventListener("mousedown", e => e.stopPropagation());
+    chev.addEventListener("click", e => { e.stopPropagation(); togglePanel(); });
     tick();
     tickCost();
     setInterval(tick, 60000);       // goal/pace every 1 min

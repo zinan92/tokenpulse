@@ -201,7 +201,7 @@ def _active_fraction(now: datetime, config: dict) -> float:
     window). '00:00'/'24:00' as the end means local midnight (end of day).
     Pace ramps from 0 at `start` to 1.0 at `end`.
     """
-    win = config.get("active_window", {"start": "09:00", "end": "23:59"})
+    win = config.get("active_window", {"start": "00:00", "end": "00:00"})
     sh, sm = (int(x) for x in win["start"].split(":"))
     eh, em = (int(x) for x in win["end"].split(":"))
     start = now.replace(hour=sh, minute=sm, second=0, microsecond=0)
@@ -280,14 +280,13 @@ def status(now: datetime | None = None, config: dict | None = None) -> dict:
 
 DEFAULT_CONFIG = {
     "day_boundary": "local",
-    "active_window": {"start": "09:00", "end": "23:59"},
+    "active_window": {"start": "00:00", "end": "00:00"},  # full local 24h day
     "targets": {
         "claude": {"weekday": 150, "weekend": 150},
         "codex": {"weekday": 150, "weekend": 150},
     },
     "checkpoints": ["15:00", "20:00", "23:00"],
     "plan_behind_threshold": 10,
-    "plan_monthly_price": {"claude": 200, "codex": 200},
     "telegram": {"enabled": True},
     "furnace": {
         "enabled": False,

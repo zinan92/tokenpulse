@@ -8,14 +8,12 @@ the only side effect is the file write in save_partial().
 from __future__ import annotations
 
 import json
-import re
 from pathlib import Path
 
 import core
 
 CONFIG_PATH = Path(__file__).with_name("config.json")
-TIME_RE = re.compile(r"^([01]?\d|2[0-3]):[0-5]\d$")
-EDITABLE = ("targets", "plan_monthly_price", "active_window")
+EDITABLE = ("targets",)  # only the daily token target is user-editable
 
 
 def load_raw() -> dict:
@@ -43,22 +41,6 @@ def validate_partial(p: dict) -> list[str]:
                 v = (t.get(tool) or {}).get(k)
                 if v is not None and (not isinstance(v, (int, float)) or v <= 0 or v > 100000):
                     errs.append(f"目标 {tool}.{k}")
-    pp = p.get("plan_monthly_price", {})
-    if not isinstance(pp, dict):
-        errs.append("plan_monthly_price")
-    else:
-        for tool in ("claude", "codex"):
-            v = pp.get(tool)
-            if v is not None and (not isinstance(v, (int, float)) or v < 0 or v > 100000):
-                errs.append(f"月费 {tool}")
-    aw = p.get("active_window", {})
-    if not isinstance(aw, dict):
-        errs.append("active_window")
-    else:
-        for k in ("start", "end"):
-            v = aw.get(k)
-            if v is not None and not TIME_RE.match(str(v)):
-                errs.append(f"工作窗口 {k}")
     return errs
 
 

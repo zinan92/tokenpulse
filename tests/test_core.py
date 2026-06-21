@@ -154,13 +154,20 @@ def test_pace_hit_and_rocket():
 
 
 def test_active_fraction_bounds():
-    cfg = CFG  # window 09:00 -> 23:59, within the local day
+    cfg = {"active_window": {"start": "09:00", "end": "23:59"}}  # explicit window
     before = datetime(2026, 6, 2, 8, 0).astimezone()
     assert core._active_fraction(before, cfg) == 0.0
     late = datetime(2026, 6, 2, 23, 58).astimezone()
     assert core._active_fraction(late, cfg) > 0.9
     mid = datetime(2026, 6, 2, 17, 0).astimezone()
     assert 0.0 < core._active_fraction(mid, cfg) < 1.0
+
+
+def test_active_fraction_full_day_is_default():
+    cfg = CFG  # default is the full local 24h day (00:00 -> 00:00)
+    # 06:00 -> 6/24 = 0.25 ; 18:00 -> 18/24 = 0.75
+    assert abs(core._active_fraction(datetime(2026, 6, 2, 6, 0).astimezone(), cfg) - 0.25) < 0.01
+    assert abs(core._active_fraction(datetime(2026, 6, 2, 18, 0).astimezone(), cfg) - 0.75) < 0.01
 
 
 def test_active_fraction_midnight_end():

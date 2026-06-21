@@ -285,12 +285,6 @@
         <div class="srow"><span class="slbl">每日目标 M</span>
           <input id="s-tc" type="number" min="1"><i>Claude</i>
           <input id="s-tx" type="number" min="1"><i>Codex</i></div>
-        <div class="srow"><span class="slbl">套餐月费 $</span>
-          <input id="s-pc" type="number" min="0"><i>Claude</i>
-          <input id="s-px" type="number" min="0"><i>Codex</i></div>
-        <div class="srow"><span class="slbl">工作窗口</span>
-          <input id="s-ws" class="wide" placeholder="09:00"><span class="dash">–</span>
-          <input id="s-we" class="wide" placeholder="23:59"></div>
         <div class="srow"><button id="s-save">保存</button>
           <span id="s-msg" class="smsg"></span></div>
       </div>
@@ -378,13 +372,12 @@
   function renderCost(cost) {
     if (!cost) return;
     const cm = cost.combined;
-    if (cm && cm.value_multiple != null)
-      $("value-badge").textContent = `⚡ ${cm.value_multiple}× plan`;
+    if (cm && cm.cost_30d != null)
+      $("value-badge").textContent = `$${Math.round(cm.cost_30d).toLocaleString("en-US")} · 30d`;
     for (const t of ["claude", "codex"]) {
       const x = cost[t]; if (!x) continue;
       const cEl = $(t + "-cost"), tEl = $(t + "-tok");
-      const mult = x.value_multiple != null ? ` · ${x.value_multiple}×` : "";
-      if (cEl) cEl.innerHTML = `<b>cost</b> ${usd(x.cost_today)} · 30d ${usd(x.cost_30d)}${mult}`;
+      if (cEl) cEl.innerHTML = `<b>cost</b> ${usd(x.cost_today)} · 30d ${usd(x.cost_30d)}`;
       if (tEl) tEl.innerHTML = `<b>30d</b> ${tok(x.tokens_30d)} · today ${tok(x.tokens_today)}`;
     }
   }
@@ -432,13 +425,9 @@
   // ── settings ──
   function populateSettings(c) {
     if (!c || c.error) return;
-    const t = c.targets || {}, pp = c.plan_monthly_price || {}, aw = c.active_window || {};
+    const t = c.targets || {};
     $("s-tc").value = (t.claude || {}).weekday ?? "";
     $("s-tx").value = (t.codex || {}).weekday ?? "";
-    $("s-pc").value = pp.claude ?? "";
-    $("s-px").value = pp.codex ?? "";
-    $("s-ws").value = aw.start ?? "";
-    $("s-we").value = aw.end ?? "";
   }
   async function loadConfig() {
     try { populateSettings(JSON.parse(await window.pywebview.api.config())); } catch (e) {}
@@ -448,15 +437,10 @@
     const num = el => { const v = parseFloat($(el).value); return Number.isFinite(v) ? v : undefined; };
     // build the partial from only the fields that are actually filled — an empty
     // input means "leave unchanged", never "save blank"
-    const tc = num("s-tc"), tx = num("s-tx"), pc = num("s-pc"), px = num("s-px");
-    const ws = $("s-ws").value.trim(), we = $("s-we").value.trim();
+    const tc = num("s-tc"), tx = num("s-tx");
     const partial = {};
     if (tc !== undefined) (partial.targets ??= {}).claude = { weekday: tc, weekend: tc };
     if (tx !== undefined) (partial.targets ??= {}).codex = { weekday: tx, weekend: tx };
-    if (pc !== undefined) (partial.plan_monthly_price ??= {}).claude = pc;
-    if (px !== undefined) (partial.plan_monthly_price ??= {}).codex = px;
-    if (ws) (partial.active_window ??= {}).start = ws;
-    if (we) (partial.active_window ??= {}).end = we;
     try {
       const r = JSON.parse(await window.pywebview.api.save_config(JSON.stringify(partial)));
       if (r.ok) {

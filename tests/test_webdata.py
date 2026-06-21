@@ -191,27 +191,18 @@ def test_cost_payload_rounds_costs_and_preserves_token_counts(monkeypatch):
     }
     monkeypatch.setattr(webdata.cost, "usage_summary", lambda tool: summaries[tool])
 
-    cfg = {"plan_monthly_price": {"claude": 200, "codex": 200}}
-    assert webdata.cost_payload(config=cfg) == {
+    assert webdata.cost_payload() == {
         "claude": {
             "cost_today": 12.35,
             "cost_30d": 456.79,
             "tokens_30d": 987654321,
             "tokens_today": 12345,
-            "plan_price": 200.0,
-            "value_multiple": 2.3,   # 456.789 / 200
         },
         "codex": {
             "cost_today": 0.0,
             "cost_30d": 1.0,
             "tokens_30d": 42,
             "tokens_today": 7,
-            "plan_price": 200.0,
-            "value_multiple": 0.0,   # 1.005 / 200
         },
-        "combined": {
-            "cost_30d": 457.79,      # 456.789 + 1.005
-            "plan_price": 400.0,
-            "value_multiple": 1.1,   # 457.794 / 400
-        },
+        "combined": {"cost_30d": 457.79},   # 456.789 + 1.005, the headline spend
     }

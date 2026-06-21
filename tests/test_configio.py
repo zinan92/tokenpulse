@@ -8,19 +8,13 @@ import configio  # noqa: E402
 
 
 def test_validate_accepts_good_partial():
-    p = {"targets": {"claude": {"weekday": 200, "weekend": 100}},
-         "plan_monthly_price": {"codex": 100}, "active_window": {"start": "08:30", "end": "23:59"}}
+    p = {"targets": {"claude": {"weekday": 200, "weekend": 100}}}
     assert configio.validate_partial(p) == []
 
 
-def test_validate_rejects_bad_values():
-    p = {"targets": {"claude": {"weekday": 0}},        # must be > 0
-         "plan_monthly_price": {"claude": -5},          # must be >= 0
-         "active_window": {"start": "9am"}}             # must be HH:MM
-    errs = configio.validate_partial(p)
+def test_validate_rejects_bad_target():
+    errs = configio.validate_partial({"targets": {"claude": {"weekday": 0}}})  # must be > 0
     assert any("目标" in e for e in errs)
-    assert any("月费" in e for e in errs)
-    assert any("工作窗口" in e for e in errs)
 
 
 def test_deep_merge_preserves_siblings():
@@ -40,7 +34,7 @@ def test_save_partial_writes_and_strips_noneditable(tmp_path, monkeypatch):
                                "furnace": {"enabled": False}}))
     monkeypatch.setattr(configio, "CONFIG_PATH", cfg)
 
-    # includes a non-editable key (furnace) that must be ignored
+    # includes non-editable keys (furnace, plan_monthly_price) that must be ignored
     res = configio.save_partial({"targets": {"claude": {"weekday": 300}},
                                  "plan_monthly_price": {"claude": 250},
                                  "furnace": {"enabled": True}})
@@ -48,7 +42,7 @@ def test_save_partial_writes_and_strips_noneditable(tmp_path, monkeypatch):
     written = json.loads(cfg.read_text())
     assert written["targets"]["claude"]["weekday"] == 300
     assert written["targets"]["claude"]["weekend"] == 150        # sibling preserved
-    assert written["plan_monthly_price"]["claude"] == 250
+    assert "plan_monthly_price" not in written                   # non-editable, stripped
     assert written["furnace"]["enabled"] is False                # UI cannot flip furnace
 
 
@@ -56,6 +50,6 @@ def test_save_partial_rejects_invalid(tmp_path, monkeypatch):
     cfg = tmp_path / "config.json"
     cfg.write_text("{}")
     monkeypatch.setattr(configio, "CONFIG_PATH", cfg)
-    res = configio.save_partial({"plan_monthly_price": {"claude": "lots"}})
+    res = configio.save_partial({"targets": {"claude": {"weekday": -5}}})
     assert res["ok"] is False and res["errors"]
     assert cfg.read_text() == "{}"   # nothing written on failure

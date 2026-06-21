@@ -88,6 +88,14 @@
   /* ── hero gauge (the focal — NOT a hero-metric number) ── */
   .hero { margin-bottom: 4px; }
   .readout { display: flex; align-items: baseline; gap: 8px; margin-bottom: 9px; }
+  /* power-user badge: 30d API-value ÷ plan price = how many × the plan you milk */
+  .vbadge {
+    margin-left: auto; align-self: center; white-space: nowrap;
+    font-family: "SF Mono", Menlo, ui-monospace, monospace;
+    font-size: 11px; font-weight: 700; color: var(--heat);
+    background: var(--heat-soft); padding: 2px 9px; border-radius: 999px;
+    box-shadow: 0 0 12px -4px var(--heat);
+  }
   .big { font-size: 30px; font-weight: 650; letter-spacing: -0.02em; color: var(--ink);
          line-height: 1; }
   .of { font-size: 13px; color: var(--ink-faint); }
@@ -183,6 +191,7 @@
       <div class="readout">
         <span class="big mono" id="c-today">0</span>
         <span class="of">/ <b class="mono" id="c-target">300M</b> today</span>
+        <span class="vbadge" id="value-badge"></span>
       </div>
       <div class="gauge">
         <div class="fill" id="c-fill"></div>
@@ -291,10 +300,14 @@
 
   function renderCost(cost) {
     if (!cost) return;
+    const cm = cost.combined;
+    if (cm && cm.value_multiple != null)
+      $("value-badge").textContent = `⚡ ${cm.value_multiple}× plan`;
     for (const t of ["claude", "codex"]) {
       const x = cost[t]; if (!x) continue;
       const cEl = $(t + "-cost"), tEl = $(t + "-tok");
-      if (cEl) cEl.innerHTML = `<b>cost</b> ${usd(x.cost_today)} · 30d ${usd(x.cost_30d)}`;
+      const mult = x.value_multiple != null ? ` · ${x.value_multiple}×` : "";
+      if (cEl) cEl.innerHTML = `<b>cost</b> ${usd(x.cost_today)} · 30d ${usd(x.cost_30d)}${mult}`;
       if (tEl) tEl.innerHTML = `<b>30d</b> ${tok(x.tokens_30d)} · today ${tok(x.tokens_today)}`;
     }
   }

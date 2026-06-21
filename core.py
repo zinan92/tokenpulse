@@ -287,6 +287,7 @@ DEFAULT_CONFIG = {
     },
     "checkpoints": ["15:00", "20:00", "23:00"],
     "plan_behind_threshold": 10,
+    "plan_monthly_price": {"claude": 200, "codex": 200},
     "telegram": {"enabled": True},
     "furnace": {
         "enabled": False,

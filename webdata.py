@@ -85,16 +85,34 @@ def core_payload(now: datetime | None = None, config: dict | None = None) -> dic
     return out
 
 
-def cost_payload() -> dict:
+def cost_payload(config: dict | None = None) -> dict:
+    """Per-tool cost/token aggregates + a "value multiple": 30-day API-equivalent
+    cost ÷ the plan's monthly price = how many times the plan you've extracted.
+    The honest "power user" stat (a real percentile isn't computable — no public
+    distribution exists)."""
+    config = config or core.load_config()
+    prices = config.get("plan_monthly_price", {})
     out = {}
+    total_cost = total_price = 0.0
     for t in TOOLS:
         s = cost.usage_summary(t)
+        price = float(prices.get(t, 200) or 0)
+        mult = round(s["cost_30d"] / price, 1) if price else None
         out[t] = {
             "cost_today": round(s["cost_today"], 2),
             "cost_30d": round(s["cost_30d"], 2),
             "tokens_30d": s["tokens_30d"],
             "tokens_today": s["tokens_today"],
+            "plan_price": price,
+            "value_multiple": mult,
         }
+        total_cost += s["cost_30d"]
+        total_price += price
+    out["combined"] = {
+        "cost_30d": round(total_cost, 2),
+        "plan_price": total_price,
+        "value_multiple": round(total_cost / total_price, 1) if total_price else None,
+    }
     return out
 
 

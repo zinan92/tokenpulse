@@ -177,9 +177,10 @@
 
   /* ── expand panel ── */
   .hright { display: flex; align-items: center; gap: 8px; }
-  .chev { cursor: pointer; color: var(--ink-faint); font-size: 12px; padding: 0 2px;
-          transition: transform 0.3s var(--ease), color 0.2s; }
-  .chev:hover { color: var(--ink); }
+  .chev { cursor: pointer; color: var(--ink-dim); font-size: 13px; line-height: 1;
+          padding: 1px 3px; border-radius: 5px;
+          transition: transform 0.3s var(--ease), color 0.2s, background 0.2s; }
+  .chev:hover { color: var(--ink); background: var(--track); }
   .chev.open { transform: rotate(180deg); color: var(--heat); }
   .panel { margin-top: 13px; padding-top: 12px; border-top: 1px solid var(--track); }
   .psec { margin-bottom: 13px; }

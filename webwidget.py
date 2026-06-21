@@ -16,6 +16,7 @@ import time
 
 import webview
 
+import configio
 import cost
 import history
 import webdata
@@ -47,6 +48,21 @@ class Api:
         except Exception as exc:  # noqa: BLE001
             return json.dumps({"error": str(exc)})
 
+    def config(self) -> str:
+        try:
+            return json.dumps(configio.editable_config(), default=str)
+        except Exception as exc:  # noqa: BLE001
+            return json.dumps({"error": str(exc)})
+
+    def save_config(self, partial_str: str) -> str:
+        try:
+            partial = json.loads(partial_str)
+        except (ValueError, TypeError):
+            return json.dumps({"ok": False, "errors": ["bad json"]})
+        # config.json is re-read on every tick, so the change applies on the next
+        # refresh; nothing to invalidate here.
+        return json.dumps(configio.save_partial(partial), default=str)
+
     def fit(self, height) -> bool:
         """Resize the window to the content height the UI measured — so nothing
         (e.g. the '$2,690' cost number) ever gets clipped by a fixed height."""
@@ -62,14 +78,10 @@ class Api:
 def _warm_loop():
     """Keep the heavy 30-day panel scan (and cost) pre-cached in the background
     so opening the detail panel is instant, not a 14s wait."""
-    first = True
+    time.sleep(25)  # let the first paint (core/cost/limits) finish uncontended
     while True:
         try:
             history.panel_data(ttl=0)          # refresh the panel cache (~2.6s warm)
-            if first:
-                cost.usage_summary("claude")   # prewarm cost so the detail fills fast
-                cost.usage_summary("codex")
-                first = False
         except Exception:  # noqa: BLE001
             pass
         time.sleep(540)  # ~9 min, just under the 10-min in-memory TTL

@@ -1,0 +1,89 @@
+"""Read/validate/write the editable subset of config.json — for the settings UI.
+
+The widget exposes a few knobs (daily targets, plan price, active window). This
+module loads the current values, validates a partial edit, deep-merges it into
+the on-disk config.json, and writes it back. Pure-logic functions are testable;
+the only side effect is the file write in save_partial().
+"""
+from __future__ import annotations
+
+import json
+import re
+from pathlib import Path
+
+import core
+
+CONFIG_PATH = Path(__file__).with_name("config.json")
+TIME_RE = re.compile(r"^([01]?\d|2[0-3]):[0-5]\d$")
+EDITABLE = ("targets", "plan_monthly_price", "active_window")
+
+
+def load_raw() -> dict:
+    try:
+        return json.loads(CONFIG_PATH.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return {}
+
+
+def editable_config() -> dict:
+    """Current effective values for the editable fields (defaults filled in)."""
+    c = core.load_config()
+    return {k: c.get(k) for k in EDITABLE}
+
+
+def validate_partial(p: dict) -> list[str]:
+    """Return a list of human-readable problems; empty means valid."""
+    errs = []
+    t = p.get("targets", {})
+    if not isinstance(t, dict):
+        errs.append("targets")
+    else:
+        for tool in ("claude", "codex"):
+            for k in ("weekday", "weekend"):
+                v = (t.get(tool) or {}).get(k)
+                if v is not None and (not isinstance(v, (int, float)) or v <= 0 or v > 100000):
+                    errs.append(f"目标 {tool}.{k}")
+    pp = p.get("plan_monthly_price", {})
+    if not isinstance(pp, dict):
+        errs.append("plan_monthly_price")
+    else:
+        for tool in ("claude", "codex"):
+            v = pp.get(tool)
+            if v is not None and (not isinstance(v, (int, float)) or v < 0 or v > 100000):
+                errs.append(f"月费 {tool}")
+    aw = p.get("active_window", {})
+    if not isinstance(aw, dict):
+        errs.append("active_window")
+    else:
+        for k in ("start", "end"):
+            v = aw.get(k)
+            if v is not None and not TIME_RE.match(str(v)):
+                errs.append(f"工作窗口 {k}")
+    return errs
+
+
+def deep_merge(base: dict, patch: dict) -> dict:
+    out = dict(base)
+    for k, v in patch.items():
+        if isinstance(v, dict) and isinstance(out.get(k), dict):
+            out[k] = deep_merge(out[k], v)
+        else:
+            out[k] = v
+    return out
+
+
+def save_partial(partial: dict) -> dict:
+    """Validate + deep-merge into config.json. Returns {ok, errors?, config?}."""
+    if not isinstance(partial, dict):
+        return {"ok": False, "errors": ["bad payload"]}
+    # keep only editable keys — never let the UI write furnace/telegram/etc.
+    partial = {k: v for k, v in partial.items() if k in EDITABLE}
+    errs = validate_partial(partial)
+    if errs:
+        return {"ok": False, "errors": errs}
+    merged = deep_merge(load_raw(), partial)
+    try:
+        CONFIG_PATH.write_text(json.dumps(merged, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+    except OSError as exc:
+        return {"ok": False, "errors": [str(exc)]}
+    return {"ok": True, "config": {k: merged.get(k) for k in EDITABLE}}

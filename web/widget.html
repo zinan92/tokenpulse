@@ -201,6 +201,28 @@
             display: flex; flex-wrap: wrap; gap: 2px 13px; }
   .cstats b { color: var(--ink-dim); font-weight: 600; }
 
+  /* settings */
+  .srow { display: flex; align-items: center; gap: 6px; margin-bottom: 7px;
+          font-size: 11px; color: var(--ink-dim); flex-wrap: wrap; }
+  .slbl { width: 70px; color: var(--ink-faint); }
+  .srow i { font-style: normal; color: var(--ink-faint); font-size: 10px; margin-right: 6px; }
+  .srow .dash { color: var(--ink-faint); }
+  .srow input {
+    width: 46px; background: var(--bg-0); border: 1px solid var(--track);
+    color: var(--ink); border-radius: 5px; padding: 3px 6px; font-size: 11px;
+    font-family: "SF Mono", Menlo, ui-monospace, monospace;
+    -webkit-user-select: text; user-select: text;
+  }
+  .srow input.wide { width: 54px; }
+  .srow input:focus { outline: none; border-color: var(--heat); }
+  #s-save { background: var(--heat-soft); color: var(--heat); border: 1px solid transparent;
+            border-radius: 6px; padding: 4px 16px; font-size: 11px; font-weight: 700;
+            cursor: pointer; transition: background 0.2s, color 0.2s; }
+  #s-save:hover { background: var(--heat); color: #1a1100; }
+  .smsg { font-size: 10.5px; color: var(--ink-faint); }
+  .smsg.ok { color: var(--heat); }
+  .smsg.err { color: var(--alarm); }
+
   @media (prefers-reduced-motion: reduce) {
     * { animation: none !important; transition-duration: 0.01ms !important; }
   }
@@ -257,6 +279,20 @@
         <div class="ptitle">过去 30 天 <span class="psub" id="streak-line"></span></div>
         <div class="chart" id="chart"></div>
         <div class="cstats" id="cstats"></div>
+      </div>
+      <div class="psec">
+        <div class="ptitle">设置</div>
+        <div class="srow"><span class="slbl">每日目标 M</span>
+          <input id="s-tc" type="number" min="1"><i>Claude</i>
+          <input id="s-tx" type="number" min="1"><i>Codex</i></div>
+        <div class="srow"><span class="slbl">套餐月费 $</span>
+          <input id="s-pc" type="number" min="0"><i>Claude</i>
+          <input id="s-px" type="number" min="0"><i>Codex</i></div>
+        <div class="srow"><span class="slbl">工作窗口</span>
+          <input id="s-ws" class="wide" placeholder="09:00"><span class="dash">–</span>
+          <input id="s-we" class="wide" placeholder="23:59"></div>
+        <div class="srow"><button id="s-save">保存</button>
+          <span id="s-msg" class="smsg"></span></div>
       </div>
     </div>
   </div>
@@ -387,16 +423,58 @@
       (p.best ? `<span><b>最高</b> ${tok(p.best.total)} (${p.best.date.slice(5)})</span>` : "");
   }
   async function loadPanel() {
+    loadConfig();   // keep the settings inputs in sync whenever the panel loads
     try { renderPanel(JSON.parse(await window.pywebview.api.panel())); }
     catch (e) {}
     setTimeout(fitWindow, 40);
   }
+
+  // ── settings ──
+  function populateSettings(c) {
+    if (!c || c.error) return;
+    const t = c.targets || {}, pp = c.plan_monthly_price || {}, aw = c.active_window || {};
+    $("s-tc").value = (t.claude || {}).weekday ?? "";
+    $("s-tx").value = (t.codex || {}).weekday ?? "";
+    $("s-pc").value = pp.claude ?? "";
+    $("s-px").value = pp.codex ?? "";
+    $("s-ws").value = aw.start ?? "";
+    $("s-we").value = aw.end ?? "";
+  }
+  async function loadConfig() {
+    try { populateSettings(JSON.parse(await window.pywebview.api.config())); } catch (e) {}
+  }
+  async function saveSettings() {
+    const msg = $("s-msg");
+    const num = el => { const v = parseFloat($(el).value); return Number.isFinite(v) ? v : undefined; };
+    // build the partial from only the fields that are actually filled — an empty
+    // input means "leave unchanged", never "save blank"
+    const tc = num("s-tc"), tx = num("s-tx"), pc = num("s-pc"), px = num("s-px");
+    const ws = $("s-ws").value.trim(), we = $("s-we").value.trim();
+    const partial = {};
+    if (tc !== undefined) (partial.targets ??= {}).claude = { weekday: tc, weekend: tc };
+    if (tx !== undefined) (partial.targets ??= {}).codex = { weekday: tx, weekend: tx };
+    if (pc !== undefined) (partial.plan_monthly_price ??= {}).claude = pc;
+    if (px !== undefined) (partial.plan_monthly_price ??= {}).codex = px;
+    if (ws) (partial.active_window ??= {}).start = ws;
+    if (we) (partial.active_window ??= {}).end = we;
+    try {
+      const r = JSON.parse(await window.pywebview.api.save_config(JSON.stringify(partial)));
+      if (r.ok) {
+        msg.textContent = "已保存 ✓"; msg.className = "smsg ok";
+        tick(); tickCost(); loadPanel();      // apply immediately
+      } else {
+        msg.textContent = "无效: " + (r.errors || []).join(", "); msg.className = "smsg err";
+      }
+    } catch (e) { msg.textContent = "保存失败"; msg.className = "smsg err"; }
+    setTimeout(() => { msg.textContent = ""; msg.className = "smsg"; }, 4000);
+  }
+
   function panelOpen() { const p = $("panel"); return p && !p.hidden; }
   function togglePanel() {
     const p = $("panel"), open = p.hidden;
     p.hidden = !open;
     $("chev").classList.toggle("open", open);
-    if (open) loadPanel();
+    if (open) loadPanel();   // loadPanel also refreshes the settings inputs
     setTimeout(fitWindow, 40);
   }
 
@@ -435,6 +513,10 @@
     const chev = $("chev");
     chev.addEventListener("mousedown", e => e.stopPropagation());
     chev.addEventListener("click", e => { e.stopPropagation(); togglePanel(); });
+    // interactions inside the panel (settings inputs/button) must not drag the window
+    $("panel").addEventListener("mousedown", e => e.stopPropagation());
+    $("s-save").addEventListener("click", e => { e.stopPropagation(); saveSettings(); });
+    loadConfig();   // populate the settings inputs up front (cheap, not gated on the panel scan)
     tick();
     tickCost();
     setInterval(tick, 60000);       // goal/pace every 1 min

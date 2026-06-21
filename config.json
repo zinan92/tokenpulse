@@ -1,14 +1,32 @@
 {
   "day_boundary": "local",
-  "active_window": { "start": "09:00", "end": "23:59" },
-  "targets": {
-    "claude": { "weekday": 150, "weekend": 150 },
-    "codex": { "weekday": 150, "weekend": 150 }
+  "active_window": {
+    "start": "09:00",
+    "end": "23:59"
   },
-  "checkpoints": ["15:00", "20:00", "23:00"],
+  "targets": {
+    "claude": {
+      "weekday": 150,
+      "weekend": 150
+    },
+    "codex": {
+      "weekday": 150,
+      "weekend": 150
+    }
+  },
+  "checkpoints": [
+    "15:00",
+    "20:00",
+    "23:00"
+  ],
   "plan_behind_threshold": 10,
-  "plan_monthly_price": { "claude": 200, "codex": 200 },
-  "telegram": { "enabled": true },
+  "plan_monthly_price": {
+    "claude": 200,
+    "codex": 200
+  },
+  "telegram": {
+    "enabled": true
+  },
   "furnace": {
     "enabled": false,
     "max_jobs_per_day": 12,

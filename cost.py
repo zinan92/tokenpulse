@@ -1,9 +1,7 @@
-"""Cost + token aggregates for the CodexBar-mirror widget.
+"""Cost + token aggregates for TokenPulse.
 
-Reproduces CodexBar's "Today cost / 30d cost / 30d tokens / Latest tokens" by
-pricing tokens at API rates from the SAME table CodexBar uses:
-  ~/Library/Caches/codexbar/model-pricing/models-dev-v1.json
-(models.dev catalog: per-model {input, output, cache_read, cache_write} $/Mtok).
+Prices tokens at API rates from the open models.dev catalog (fetched directly,
+no CodexBar dependency), giving "Today cost / 30d cost / 30d tokens".
 
 Cost = Σ over priced units of  input×in + cache_creation×cache_write +
 cache_read×cache_read + output×output  (per model, /1e6).
@@ -18,11 +16,16 @@ import json
 import os
 import re
 import time
+import urllib.request
 from datetime import datetime, timedelta, timezone
 
 import core  # reuse _codex_session_uuid, _parse_ts, dedup ideas
 
-PRICE_FILE = os.path.expanduser(
+MODELS_DEV_URL = "https://models.dev/api.json"
+PRICE_CACHE = os.path.join(os.path.dirname(os.path.abspath(__file__)), ".models-pricing.json")
+PRICE_TTL = 86400  # refetch models.dev at most once a day
+# Optional fallback if models.dev is unreachable AND our cache is empty.
+CODEXBAR_PRICE = os.path.expanduser(
     "~/Library/Caches/codexbar/model-pricing/models-dev-v1.json"
 )
 MILLION = 1_000_000
@@ -32,19 +35,57 @@ DEFAULT_TTL = 600  # seconds
 
 # ----------------------------------------------------------------- price table
 
+def _flatten(providers: dict) -> dict:
+    """{provider: {models: {id: {cost}}}} -> flat {id: cost} for anthropic+openai."""
+    out = {}
+    for pid in ("anthropic", "openai"):
+        for mid, m in providers.get(pid, {}).get("models", {}).items():
+            if isinstance(m.get("cost"), dict):
+                out[mid] = m["cost"]
+    return out
+
+
 def _load_prices() -> dict:
-    """model-id -> {input, output, cache_read, cache_write} ($/Mtok)."""
+    """model-id -> {input, output, cache_read, cache_write} ($/Mtok).
+
+    Source order: our fresh disk cache → live models.dev → stale disk cache →
+    CodexBar's cache (legacy fallback). Decoupled from CodexBar.
+    """
     if "prices" in _CACHE:
         return _CACHE["prices"]
     prices: dict[str, dict] = {}
+    # 1. our own disk cache, if fresh
     try:
-        cat = json.load(open(PRICE_FILE, encoding="utf-8"))["catalog"]["providers"]
-        for pid in ("anthropic", "openai"):
-            for mid, m in cat.get(pid, {}).get("models", {}).items():
-                if isinstance(m.get("cost"), dict):
-                    prices[mid] = m["cost"]
-    except (OSError, ValueError, KeyError):
+        if os.path.exists(PRICE_CACHE) and time.time() - os.path.getmtime(PRICE_CACHE) < PRICE_TTL:
+            prices = json.load(open(PRICE_CACHE, encoding="utf-8"))
+    except (OSError, ValueError):
         pass
+    # 2. fetch live models.dev (top-level providers) and cache it
+    if not prices:
+        try:
+            req = urllib.request.Request(
+                MODELS_DEV_URL, headers={"User-Agent": "tokenpulse/1.0 (+https://github.com/zinan92/tokenpulse)"})
+            with urllib.request.urlopen(req, timeout=10) as r:
+                prices = _flatten(json.loads(r.read()))
+            if prices:
+                try:
+                    json.dump(prices, open(PRICE_CACHE, "w", encoding="utf-8"))
+                except OSError:
+                    pass
+        except Exception:  # noqa: BLE001  (network / parse — fall through)
+            pass
+    # 3. stale disk cache
+    if not prices:
+        try:
+            prices = json.load(open(PRICE_CACHE, encoding="utf-8"))
+        except (OSError, ValueError):
+            pass
+    # 4. CodexBar's cache (legacy fallback; catalog.providers structure)
+    if not prices:
+        try:
+            prices = _flatten(json.load(open(CODEXBAR_PRICE, encoding="utf-8"))["catalog"]["providers"])
+        except (OSError, ValueError, KeyError):
+            pass
     _CACHE["prices"] = prices
     return prices
 

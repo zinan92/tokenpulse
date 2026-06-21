@@ -5,3 +5,4 @@ __pycache__/
 .history-cache.json
 furnace-state.json
 furnace-*.lock
+.models-pricing.json

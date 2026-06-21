@@ -104,3 +104,33 @@ def test_preferred_account_selected(tmp_path, monkeypatch):
     (tmp_path / "codex.json").write_text(json.dumps(_hist([])))
     pl = limits.plan_limits(now=NOW)
     assert limits.window(pl["claude"], "weekly")["used_percent"] == 12  # account B
+
+
+def test_codex_local_limits_from_session_rate_limits(tmp_path, monkeypatch):
+    """Codex session/weekly % comes from local ~/.codex rate_limits, no CodexBar."""
+    import json as _j
+    from datetime import datetime, timezone
+    sess = tmp_path / "sessions"
+    sess.mkdir()
+    f = sess / "rollout-2026-06-21T11-00-00-aaaa-bbbb-cccc-dddd-eeee.jsonl"
+    reset = int(datetime(2026, 6, 24, 0, 0, tzinfo=timezone.utc).timestamp())
+    rows = [
+        {"timestamp": "2026-06-21T11:00:00Z", "payload": {"model": "gpt-5.5"}},
+        {"timestamp": "2026-06-21T11:05:00Z", "payload": {"rate_limits": {
+            "primary": {"used_percent": 2.0, "window_minutes": 300, "resets_at": reset},
+            "secondary": {"used_percent": 42.0, "window_minutes": 10080, "resets_at": reset},
+            "plan_type": "pro"}}},
+    ]
+    f.write_text("".join(_j.dumps(r) + "\n" for r in rows))
+    monkeypatch.setattr(limits.core, "CODEX_GLOBS", (str(tmp_path / "**" / "*.jsonl"),))
+
+    now = datetime(2026, 6, 21, 12, 0, tzinfo=timezone.utc)
+    info = limits._codex_local_limits(now)
+    assert info["available"] is True
+    assert info["plan_type"] == "pro"
+    sess_w = limits.window(info, "session")
+    week_w = limits.window(info, "weekly")
+    assert sess_w["left_percent"] == 98.0 and sess_w["window_minutes"] == 300
+    assert week_w["left_percent"] == 58.0
+    assert week_w["pace"] is not None          # weekly gets a pace
+    assert sess_w["pace"] is None              # 5h session does not

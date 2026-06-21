@@ -1,21 +1,23 @@
 """Real subscription plan limits for Claude and Codex.
 
-The actual rate-limit windows (session/5h, weekly, opus) are NOT in the local
-Claude transcripts — Anthropic only exposes them via an OAuth usage endpoint.
-CodexBar already does that authentication + probing and writes the computed
-results to disk, refreshed roughly hourly. We piggyback on that feed rather than
-re-extracting OAuth tokens from the Keychain ourselves.
+- CODEX session/weekly %: read DIRECTLY from local `~/.codex` session logs
+  (`payload.rate_limits`) — no CodexBar needed.
+- CLAUDE session/weekly/opus %: NOT in any local Claude file — Anthropic exposes
+  them only via an OAuth usage endpoint with a token that needs refreshing.
+  CodexBar already does that safely, so we read its on-disk feed WHEN PRESENT.
+  CodexBar is OPTIONAL: absent → Claude windows show unavailable, everything
+  else (Codex limits, tokens, cost) still works.
 
-Source: ~/Library/Application Support/com.steipete.codexbar/history/{claude,codex}.json
-Requires CodexBar to be installed and running (it keeps the files fresh).
-
-Pure stdlib. Degrades gracefully when CodexBar is absent or its data is stale.
+Pure stdlib. Degrades gracefully.
 """
 from __future__ import annotations
 
+import glob
 import json
 import os
 from datetime import datetime, timezone
+
+import core  # CODEX_GLOBS, _codex_session_uuid
 
 HIST_DIR = os.path.expanduser(
     "~/Library/Application Support/com.steipete.codexbar/history"
@@ -171,10 +173,76 @@ def _tool_limits(tool: str, now: datetime) -> dict:
     }
 
 
+def _codex_local_limits(now: datetime) -> dict:
+    """Codex session(5h)/weekly(7d) % straight from local ~/.codex session logs
+    (`payload.rate_limits`) — no CodexBar dependency."""
+    paths = []
+    for pat in core.CODEX_GLOBS:
+        paths.extend(glob.glob(pat, recursive=True))
+    paths.sort(key=lambda p: os.path.getmtime(p) if os.path.exists(p) else 0, reverse=True)
+
+    rl = None
+    rl_ts = None
+    for f in paths[:8]:  # most-recently-active sessions carry the freshest limits
+        try:
+            for line in open(f, encoding="utf-8"):
+                if '"rate_limits"' not in line:
+                    continue
+                try:
+                    d = json.loads(line)
+                except (ValueError, TypeError):
+                    continue
+                p = d.get("payload")
+                if isinstance(p, dict) and isinstance(p.get("rate_limits"), dict):
+                    rl, rl_ts = p["rate_limits"], d.get("timestamp")
+        except OSError:
+            continue
+        if rl:
+            break
+    if not rl:
+        return {"available": False, "reason": "no-codex-rate-limits", "windows": []}
+
+    windows = []
+    for key, name in (("primary", "session"), ("secondary", "weekly")):
+        w = rl.get(key)
+        if not isinstance(w, dict) or w.get("used_percent") is None:
+            continue
+        used = w["used_percent"]
+        wm = w.get("window_minutes")
+        epoch = w.get("resets_at")
+        ra = (datetime.fromtimestamp(epoch, tz=timezone.utc).isoformat()
+              if isinstance(epoch, (int, float)) else None)
+        windows.append({
+            "name": name,
+            "window_minutes": wm,
+            "used_percent": used,
+            "left_percent": 100 - used,
+            "resets_at": ra,
+            "reset_in": reset_in(ra, now),
+            "captured_at": rl_ts,
+            "pace": window_pace(wm, ra, used, now),
+        })
+    windows.sort(key=lambda x: WINDOW_ORDER.get(x["name"], 99))
+
+    newest = _parse(rl_ts)
+    age = (now - newest).total_seconds() if newest else None
+    return {
+        "available": bool(windows),
+        "stale": bool(age is not None and age > STALE_AFTER_SECONDS),
+        "sample_age_seconds": int(age) if age is not None else None,
+        "sampled_at": rl_ts,
+        "windows": windows,
+        "plan_type": rl.get("plan_type"),
+    }
+
+
 def plan_limits(now: datetime | None = None) -> dict:
-    """Real plan-limit state for both tools from the CodexBar feed."""
+    """Plan-limit state per tool. Codex is local; Claude uses CodexBar if present."""
     now = now or datetime.now(timezone.utc)
-    return {tool: _tool_limits(tool, now) for tool in PROVIDER_FILE}
+    return {
+        "claude": _tool_limits("claude", now),     # CodexBar feed (optional)
+        "codex": _codex_local_limits(now),          # local ~/.codex, no CodexBar
+    }
 
 
 def window(limits_for_tool: dict, name: str) -> dict | None:

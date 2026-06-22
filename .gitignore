@@ -7,3 +7,4 @@ furnace-state.json
 furnace-*.lock
 .models-pricing.json
 .card-out/
+.lifetime.json

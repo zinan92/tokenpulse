@@ -23,6 +23,7 @@ import card
 import configio
 import cost
 import history
+import lifetime
 import webdata
 
 HTML = os.path.join(os.path.dirname(os.path.abspath(__file__)), "web", "widget.html")
@@ -61,7 +62,8 @@ class Api:
     def share_card(self) -> str:
         """Render the shareable value-card PNG and reveal it in Finder."""
         try:
-            path = card.make_card()
+            from datetime import date
+            path = card.make_card(date_str=date.today().isoformat())
             subprocess.Popen(["open", "-R", path])  # reveal in Finder, ready to drag/share
             return json.dumps({"ok": True, "path": path})
         except Exception as exc:  # noqa: BLE001
@@ -98,11 +100,17 @@ def _warm_loop():
     """Keep the heavy 30-day panel scan (and cost) pre-cached in the background
     so opening the detail panel is instant, not a 14s wait."""
     time.sleep(25)  # let the first paint (core/cost/limits) finish uncontended
+    try:
+        lifetime.ensure_backfill()  # one-time full-log scan for the lifetime trophy (~15s)
+    except Exception:  # noqa: BLE001
+        pass
     while True:
         try:
             history.panel_data(ttl=0)          # panel + egg/badges (share card)
+            history.daily_tokens(days=120)     # 120d series for velocity badges + best-30d
             cost.usage_summary("claude", ttl=0)  # keep cost warm so badges is instant
             cost.usage_summary("codex", ttl=0)
+            lifetime.update()                  # cheap daily increment (no backfill)
         except Exception:  # noqa: BLE001
             pass
         time.sleep(480)  # ~8 min, under the 10-min in-memory TTL

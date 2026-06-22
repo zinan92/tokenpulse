@@ -285,7 +285,8 @@ DEFAULT_CONFIG = {
         "claude": {"weekday": 150, "weekend": 150},
         "codex": {"weekday": 150, "weekend": 150},
     },
-    "handle": "",  # your @handle for the share card (blank -> git user / "you")
+    "handle": "",  # your X/Twitter @handle for the share card (blank -> git user / "you")
+    "xhs_id": "",  # your 小红书号 (RED ID) for the share card (blank -> hidden)
     "checkpoints": ["15:00", "20:00", "23:00"],
     "plan_behind_threshold": 10,
     "telegram": {"enabled": True},

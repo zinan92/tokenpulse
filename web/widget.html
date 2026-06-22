@@ -317,8 +317,10 @@
         <div class="srow"><span class="slbl">每日目标 M</span>
           <input id="s-tc" type="number" min="1"><i>Claude</i>
           <input id="s-tx" type="number" min="1"><i>Codex</i></div>
-        <div class="srow"><span class="slbl">分享名</span>
+        <div class="srow"><span class="slbl">X 账号</span>
           <span class="at">@</span><input id="s-handle" class="wider" placeholder="yourhandle"><i>战绩卡署名</i></div>
+        <div class="srow"><span class="slbl">小红书号</span>
+          <input id="s-xhs" class="wider" placeholder="RED ID"><i>选填</i></div>
         <div class="srow"><button id="s-save">保存</button>
           <span id="s-msg" class="smsg"></span></div>
       </div>
@@ -465,14 +467,16 @@
       $("egg-emo").textContent = b.tier.emoji;
       $("egg-name").textContent = b.tier.name;
       const nx = b.tier.next
-        ? `${Math.round((b.tier.progress_to_next || 0) * 100)}% to ${b.tier.next.name}`
-        : "max tier 🐉";
+        ? `${Math.round((b.tier.progress_to_next || 0) * 100)}% → ${b.tier.next.name}`
+        : "顶端 · 如来";
       const sk = b.streak > 0 ? ` · 🔥${b.streak}` : "";
       $("egg-sub").innerHTML = `<b>${tok(b.monthly_tokens)}</b>/mo${sk} · ${nx}`;
       $("egg-prog-f").style.width = Math.round((b.tier.progress_to_next ?? 1) * 100) + "%";
-      const rec = b.record_day ? `💥 史上最高日 <b>${tok(b.record_day.total)}</b>` : "";
-      const bs = b.best_streak > 0 ? `🏆 最佳连续 <b>${b.best_streak}天</b>` : "";
-      $("egg-records").innerHTML = [bs, rec].filter(Boolean).map(s => `<span>${s}</span>`).join("");
+      const lf = (b.lifetime && b.lifetime.lifetime_tokens)
+        ? `♾️ 生涯 <b>${tok(b.lifetime.lifetime_tokens)}</b>` : "";
+      const rec = b.record_day ? `💥 最高日 <b>${tok(b.record_day.total)}</b>` : "";
+      const bs = b.best_streak > 0 ? `🏆 连续 <b>${b.best_streak}天</b>` : "";
+      $("egg-records").innerHTML = [lf, bs, rec].filter(Boolean).map(s => `<span>${s}</span>`).join("");
     } catch (e) {}
   }
   async function shareCard() {
@@ -492,6 +496,7 @@
     $("s-tc").value = (t.claude || {}).weekday ?? "";
     $("s-tx").value = (t.codex || {}).weekday ?? "";
     $("s-handle").value = (c.handle || "").replace(/^@/, "");
+    $("s-xhs").value = c.xhs_id || "";
   }
   async function loadConfig() {
     try { populateSettings(JSON.parse(await window.pywebview.api.config())); } catch (e) {}
@@ -506,6 +511,7 @@
     if (tc !== undefined) (partial.targets ??= {}).claude = { weekday: tc, weekend: tc };
     if (tx !== undefined) (partial.targets ??= {}).codex = { weekday: tx, weekend: tx };
     partial.handle = $("s-handle").value.trim().replace(/^@/, "");  // empty -> default
+    partial.xhs_id = $("s-xhs").value.trim();  // empty -> hidden on card
     try {
       const r = JSON.parse(await window.pywebview.api.save_config(JSON.stringify(partial)));
       if (r.ok) {

@@ -179,14 +179,11 @@ def card_data(now: datetime | None = None, config: dict | None = None) -> dict:
     peak_active_min = max((r["minutes"] for r in active_series), default=0)
     lifetime_active_min = sum(r["minutes"] for r in active_series)
 
+    # engagement stays OUT of the card badge list (panel-only, per user) — the panel
+    # reads longest_run / active directly from the returned dict below.
     badges = _build_badges(life, streak, best_streak,
                            (record_day or {}).get("total", 0), per_tool30, cur30, prev30, best30,
                            hit_rate=hit_rate, peak_session=life.get("peak_session"))
-    lh = cont.get("longest_hours", 0)
-    if lh >= 6:
-        badges.append({"icon": "🏃", "name": f"连续在线 {lh:.0f}h", "hero": False, "expert": True})
-    if peak_active_min >= 600:
-        badges.append({"icon": "⏱️", "name": f"单日 {peak_active_min / 60:.0f}h 在线", "hero": False, "expert": True})
 
     return {
         "tier": _tier(monthly_tokens),

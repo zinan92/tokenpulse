@@ -290,6 +290,19 @@ DEFAULT_CONFIG = {
     "checkpoints": ["15:00", "20:00", "23:00"],
     "plan_behind_threshold": 10,
     "telegram": {"enabled": True},
+    "builder": {
+        "handle": "xparkzz",
+        "xhs_id": "337506137",
+        "douyin_id": "1212207022",
+        "url": "https://park-ai-intel.com/tokenpulse",
+    },
+    "share": {
+        "mode": "cloudflared",
+        "host": "127.0.0.1",
+        "port": 8765,
+        "base_url": "",
+        "ttl_hours": 24,
+    },
     "furnace": {
         "enabled": False,
         "max_jobs_per_day": 12,

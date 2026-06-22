@@ -4,7 +4,7 @@ Engineered for the half-second cold glance: the TIER TITLE (齐天大圣…) rea
 an identity before any number. Monthly burn is framed as operating SCALE; the
 西游记 ascension ladder shows how high you've climbed and what's above; lifetime
 is the never-resets trophy; the dollar figure is demoted; a "本地日志核验" mark
-keeps the number credible. Two handles (X + 小红书号) tether it to a real person.
+keeps the number credible. Social IDs are compact icon-led attribution marks.
 
 Premium type: SF Compact Black (display numbers), Avenir (Latin labels),
 Hiragino Sans GB (CJK — PingFang isn't Pillow-loadable). Pure stdlib + Pillow.
@@ -17,6 +17,7 @@ from PIL import Image, ImageDraw, ImageFilter, ImageFont
 
 import badges
 import core
+import share
 
 W, H = 1080, 1440          # 小红书 3:4 portrait
 PAD = 84
@@ -72,6 +73,51 @@ def _emoji(char, px):
         return im.resize((max(1, int(im.width * s)), px), Image.LANCZOS)
     except Exception:  # noqa: BLE001
         return None
+
+
+def _text_icon(text, px, fill=INK, font_size=None, bold=True):
+    font = _av(font_size or px, bold=bold)
+    im = Image.new("RGBA", (px + 8, px + 8), (0, 0, 0, 0))
+    d = ImageDraw.Draw(im)
+    bbox = d.textbbox((0, 0), text, font=font)
+    tw, th = bbox[2] - bbox[0], bbox[3] - bbox[1]
+    d.text(((im.width - tw) / 2 - bbox[0], (im.height - th) / 2 - bbox[1]), text, font=font, fill=fill)
+    return im.crop(im.getbbox() or (0, 0, im.width, im.height))
+
+
+def _x_icon(px):
+    return _text_icon("X", px, INK, font_size=px + 3, bold=True)
+
+
+def _douyin_icon(px):
+    im = Image.new("RGBA", (px + 10, px + 10), (0, 0, 0, 0))
+    d = ImageDraw.Draw(im)
+    scale = px / 20
+
+    def p(v):
+        return int(round(v * scale))
+
+    def note(dx, dy, fill):
+        dx, dy = p(dx) + 3, p(dy) + 2
+        width = max(3, p(4))
+        d.line([(p(12) + dx, p(3) + dy), (p(12) + dx, p(14) + dy)], fill=fill, width=width)
+        d.line([(p(12) + dx, p(3) + dy), (p(17) + dx, p(5) + dy)], fill=fill, width=width)
+        d.ellipse([p(4) + dx, p(11) + dy, p(13) + dx, p(20) + dy], fill=fill)
+
+    note(-1.6, 1.4, (37, 244, 238, 230))
+    note(1.6, -1.4, (254, 44, 85, 230))
+    note(0, 0, INK)
+    return im.crop(im.getbbox() or (0, 0, im.width, im.height))
+
+
+def _brand_icon(kind, px):
+    if kind == "x":
+        return _x_icon(px)
+    if kind == "xhs":
+        return _emoji("📕", px)
+    if kind == "douyin":
+        return _douyin_icon(px)
+    return None
 
 
 def _tok(n):
@@ -145,13 +191,19 @@ def _git_handle():
         return None
 
 
+def _builder(data: dict) -> dict:
+    defaults = core.DEFAULT_CONFIG.get("builder", {})
+    raw = data.get("builder") if isinstance(data.get("builder"), dict) else {}
+    return {**defaults, **raw}
+
+
 def render(data, out_path=OUT_DEFAULT, date_str=""):
     tier = data["tier"]
     life = data.get("lifetime") or {}
     handles = data.get("handles") or {}
     rs = data.get("rank_self") or {}
+    builder = _builder(data)
     x_handle = (handles.get("x") or "").lstrip("@")
-    xhs = (handles.get("xhs") or "").strip()
 
     img = Image.new("RGB", (W, H), BG)
     img = img.convert("RGBA")
@@ -159,22 +211,25 @@ def render(data, out_path=OUT_DEFAULT, date_str=""):
     img.alpha_composite(_glow((W, H), (CX, 56), 280, HEAT, 34))
     d = ImageDraw.Draw(img)
 
-    # ── HEADER: creature + tier title + gloss + handles ──
+    # ── HEADER: creature + tier title + gloss + X identity ──
     creature = _emoji(tier["emoji"], 138)
     if creature:
         img.alpha_composite(creature, (CX - creature.width // 2, 70))
     _ct(d, 222, tier["name"], _han(86, bold=True), HEAT)
     _spaced(d, (CX, 318), tier["name_en"].upper(), _av(24), GOLD, 7, anchor="c")
-    segs = []
     if x_handle:
-        segs.append(("t", f"@{x_handle}", _av(22, bold=False), INK))
-    if x_handle and xhs:
-        segs.append(("t", "·", _av(22), FAINT))
-    if xhs:
-        segs.append(("e", "📕", 20))
-        segs.append(("t", xhs, _han(21), INK))
-    if segs:
-        _segrow(d, img, 356, segs, gap=13)
+        icon = _brand_icon("x", 20)
+        text = f"@{x_handle}"
+        font = _av(22, bold=False)
+        gap = 8
+        text_w = d.textlength(text, font=font)
+        icon_w = icon.width if icon else 0
+        total = icon_w + (gap if icon else 0) + text_w
+        x0 = CX - total / 2
+        if icon:
+            img.alpha_composite(icon, (int(x0), 359))
+            x0 += icon_w + gap
+        d.text((x0, 356), text, font=font, fill=INK)
 
     # ── HERO NUMBER ──
     _spaced(d, (CX, 432), "THIS MONTH", _av(23), DIM, 5, anchor="c")
@@ -225,13 +280,14 @@ def render(data, out_path=OUT_DEFAULT, date_str=""):
 
     # ── LIFETIME ──
     ly = top + len(badges.SAGA_TIERS) * rh + 22
-    le = _emoji("♾️", 23)
+    le = _emoji("♾️", 21)
+    tx0 = PAD + 62
     if le:
-        img.alpha_composite(le, (PAD, ly + 3))
+        img.alpha_composite(le, (PAD, ly + 5))
     lt = f"生涯 {_tok(life.get('lifetime_tokens', 0))}"
-    d.text((PAD + 34, ly), lt, font=_han(27, bold=True), fill=GOLD)
+    d.text((tx0, ly), lt, font=_han(27, bold=True), fill=GOLD)
     since = (life.get("first_use_date") or "")[:7]
-    d.text((PAD + 34 + d.textlength(lt, font=_han(27, bold=True)) + 16, ly + 6),
+    d.text((tx0 + d.textlength(lt, font=_han(27, bold=True)) + 16, ly + 6),
            f"自 {since} · {life.get('days_active', 0)} 天在线", font=_han(19), fill=DIM)
 
     # ── BADGES (single row, top 5) ──
@@ -251,25 +307,56 @@ def render(data, out_path=OUT_DEFAULT, date_str=""):
         d.text((int(ix), by + 8), label, font=_han(18), fill=GOLD if b.get("hero") else INK)
         cx += chw + 10
 
-    # ── FOOTER ──
-    fy = H - 78
-    d.line([(PAD, fy - 20), (W - PAD, fy - 20)], fill=TRACK, width=1)
+    # ── FOOTER: proof + builder attribution ──
+    footer_top = H - 134
+    fy = footer_top + 38
+    d.line([(PAD, footer_top), (W - PAD, footer_top)], fill=TRACK, width=1)
     d.text((PAD, fy), f"≈ {_usd(data.get('monthly_cost'))} 算力 · 包月订阅吞吐", font=_han(18), fill=FAINT)
     ve = _emoji("✅", 16)
     vx = PAD
     if ve:
         img.alpha_composite(ve, (PAD, fy + 30)); vx = PAD + ve.width + 6
     d.text((vx, fy + 30), "本地日志核验 · 非自填", font=_han(16), fill=FAINT)
+
+    qr_url = builder.get("url") or core.DEFAULT_CONFIG["builder"]["url"]
+    qr_size = 104
+    qx, qy = W - PAD - qr_size, footer_top + 14
+    try:
+        qrim = share.qr_pil(qr_url, qr_size).convert("RGBA")
+        d.rounded_rectangle([qx - 6, qy - 6, qx + qr_size + 6, qy + qr_size + 6], radius=10,
+                            fill=(238, 242, 247))
+        img.alpha_composite(qrim, (qx, qy))
+    except Exception:  # noqa: BLE001
+        qx = W - PAD
+
+    tx = qx - 20
     wm = "TOKENPULSE"
     wmw = d.textlength(wm, font=_av(20))
     fe = _emoji("⏱", 18)
-    fx = W - PAD - wmw
-    if fe:
-        img.alpha_composite(fe, (int(fx - fe.width - 7), fy - 2))
-    d.text((fx, fy), wm, font=_av(20), fill=DIM)
+    icon_x = tx - wmw - (fe.width + 7 if fe else 0)
+    if fe and icon_x > PAD:
+        img.alpha_composite(fe, (int(icon_x), fy - 2))
+    d.text((tx - wmw, fy), wm, font=_av(20), fill=DIM)
+    channel_font = _av(19, bold=True)
+    channel_lines = []
+    if builder.get("xhs_id"):
+        channel_lines.append(("xhs", builder["xhs_id"], INK))
+    if builder.get("douyin_id"):
+        channel_lines.append(("douyin", builder["douyin_id"], GOLD))
+    for i, (kind, value, fill) in enumerate(channel_lines[:2]):
+        icon = _brand_icon(kind, 20)
+        y = fy + 29 + i * 25
+        gap = 8
+        value_w = d.textlength(value, font=channel_font)
+        icon_w = icon.width if icon else 0
+        total = icon_w + (gap if icon else 0) + value_w
+        x0 = tx - total
+        if icon:
+            img.alpha_composite(icon, (int(x0), int(y + 1)))
+            x0 += icon_w + gap
+        d.text((x0, y), value, font=channel_font, fill=fill)
     if date_str:
-        d.text((W - PAD - d.textlength(date_str, font=_av(15, bold=False)), fy + 31), date_str,
-               font=_av(15, bold=False), fill=FAINT)
+        d.text((PAD, fy + 56), date_str, font=_av(15, bold=False), fill=FAINT)
 
     os.makedirs(os.path.dirname(out_path), exist_ok=True)
     img.convert("RGB").save(out_path)

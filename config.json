@@ -14,7 +14,7 @@
       "weekend": 150
     }
   },
-  "handle": "zinan92",
+  "handle": "xparkzz",
   "xhs_id": "337506137",
   "checkpoints": [
     "15:00",
@@ -22,6 +22,19 @@
     "23:00"
   ],
   "plan_behind_threshold": 10,
+  "builder": {
+    "handle": "xparkzz",
+    "xhs_id": "337506137",
+    "douyin_id": "1212207022",
+    "url": "https://park-ai-intel.com/tokenpulse"
+  },
+  "share": {
+    "mode": "cloudflared",
+    "host": "127.0.0.1",
+    "port": 8765,
+    "base_url": "",
+    "ttl_hours": 24
+  },
   "telegram": {
     "enabled": true
   },

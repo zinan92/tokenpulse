@@ -1,1 +1,3 @@
 pywebview
+Pillow
+qrcode[pil]

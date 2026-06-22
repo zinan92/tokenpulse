@@ -92,6 +92,18 @@ def _tok(n: int) -> str:
     return cost.humanize_tokens(n)
 
 
+def _builder_config(config: dict) -> dict:
+    defaults = core.DEFAULT_CONFIG.get("builder", {})
+    raw = config.get("builder") if isinstance(config.get("builder"), dict) else {}
+    out = {**defaults, **raw}
+    return {
+        "handle": (out.get("handle") or "").lstrip("@"),
+        "xhs_id": out.get("xhs_id") or "",
+        "douyin_id": out.get("douyin_id") or "",
+        "url": out.get("url") or defaults.get("url", ""),
+    }
+
+
 def _build_badges(life, streak, best_streak, record_total, per_tool30, cur30, prev30, best30,
                   hit_rate=0.0, peak_session=None) -> list:
     """Earned badges across many dimensions. hero=screenshot-headline."""
@@ -215,6 +227,7 @@ def card_data(now: datetime | None = None, config: dict | None = None) -> dict:
         "combined_target": p["combined_target"],
         "badges": badges,
         "handles": {"x": config.get("handle") or "", "xhs": config.get("xhs_id") or ""},
+        "builder": _builder_config(config),
         "per_tool": {t: {"tokens_30d": costs[t]["tokens_30d"],
                          "cost_30d": round(costs[t]["cost_30d"], 2)} for t in ("claude", "codex")},
     }

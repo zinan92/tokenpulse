@@ -1,0 +1,40 @@
+"""Tests for QR/share-page handoff generation."""
+import os
+import sys
+
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+import share  # noqa: E402
+
+
+def test_qr_data_uri_is_png():
+    uri = share.qr_data_uri("https://example.com/tokenpulse", pixels=96)
+    assert uri.startswith("data:image/png;base64,")
+
+
+def test_build_share_payload_writes_static_page(tmp_path):
+    card = tmp_path / "card.png"
+    card.write_bytes(b"fake-png")
+    cfg = {
+        "builder": {
+            "handle": "zinan92",
+            "xhs_id": "337506137",
+            "douyin_id": "douyin-demo",
+            "url": "https://example.com/builder",
+        },
+        "share": {"mode": "local", "host": "127.0.0.1", "port": 0, "base_url": ""},
+    }
+
+    payload = share.build_share_payload(card, config=cfg, root=tmp_path / "share", start_tunnel=False)
+
+    assert payload["url"].startswith("http://127.0.0.1:")
+    assert payload["https"] is False
+    assert payload["qr"].startswith("data:image/png;base64,")
+    page = tmp_path / "share" / payload["share_id"] / "index.html"
+    copied = tmp_path / "share" / payload["share_id"] / "card.png"
+    assert page.exists()
+    assert copied.read_bytes() == b"fake-png"
+    html = page.read_text(encoding="utf-8")
+    assert "navigator.share" in html
+    assert "复制文案" in html
+    assert "小红书号：337506137" in html
+    assert "抖音：douyin-demo" in html

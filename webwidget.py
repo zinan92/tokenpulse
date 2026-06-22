@@ -21,10 +21,12 @@ import subprocess
 import badges
 import card
 import configio
+import core
 import continuity
 import cost
 import history
 import lifetime
+import share
 import webdata
 
 HTML = os.path.join(os.path.dirname(os.path.abspath(__file__)), "web", "widget.html")
@@ -61,14 +63,28 @@ class Api:
             return json.dumps({"error": str(exc)})
 
     def share_card(self) -> str:
-        """Render the shareable value-card PNG and reveal it in Finder."""
+        """Render the shareable value-card PNG and return a QR share payload."""
         try:
             from datetime import date
             path = card.make_card(date_str=date.today().isoformat())
-            subprocess.Popen(["open", "-R", path])  # reveal in Finder, ready to drag/share
-            return json.dumps({"ok": True, "path": path})
+            payload = share.build_share_payload(path, config=core.load_config())
+            return json.dumps({"ok": True, "path": path, **payload})
         except Exception as exc:  # noqa: BLE001
             return json.dumps({"ok": False, "error": str(exc)})
+
+    def open_url(self, url: str) -> bool:
+        try:
+            subprocess.Popen(["open", url])
+            return True
+        except Exception:  # noqa: BLE001
+            return False
+
+    def reveal_path(self, path: str) -> bool:
+        try:
+            subprocess.Popen(["open", "-R", path])
+            return True
+        except Exception:  # noqa: BLE001
+            return False
 
     def config(self) -> str:
         try:

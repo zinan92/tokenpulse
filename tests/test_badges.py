@@ -78,6 +78,9 @@ def test_card_data_shape(monkeypatch):
     assert d["monthly_tokens"] == 6 * B
     assert d["lifetime"]["lifetime_tokens"] == 12 * B
     assert d["handles"] == {"x": "zinan92", "xhs": "redz"}
+    assert d["builder"]["handle"] == "xparkzz"
+    assert d["builder"]["xhs_id"] == "337506137"
+    assert d["builder"]["douyin_id"] == "1212207022"
     labels = [b["name"] for b in d["badges"]]
     assert any("五亿日" in l for l in labels)                 # record 980M in [500M,1B)
     assert any("双机手" in l for l in labels)                 # both tools 3B >= 1B

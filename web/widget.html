@@ -237,6 +237,18 @@
     padding: 6px 12px; font-size: 11px; font-weight: 700; cursor: pointer; white-space: nowrap;
     box-shadow: 0 0 16px -6px var(--heat); transition: filter 0.2s; }
   .share-btn:hover { filter: brightness(1.1); }
+  .share-box { margin: 10px 0 12px; padding: 11px; border: 1px solid var(--track);
+    border-radius: 8px; background: color-mix(in oklch, var(--bg-1), #000 18%); }
+  .share-top { display: flex; gap: 10px; align-items: center; }
+  .share-qr { width: 104px; height: 104px; border-radius: 8px; background: #f8fafc; padding: 5px; flex: 0 0 auto; }
+  .share-copy { min-width: 0; flex: 1; }
+  .share-title { font-size: 12px; font-weight: 700; color: var(--ink); margin-bottom: 3px; }
+  .share-note { font-size: 10.5px; color: var(--ink-faint); line-height: 1.35; }
+  .share-url { margin-top: 7px; font-size: 9.5px; color: var(--ink-faint); word-break: break-all; }
+  .share-actions { display: flex; gap: 6px; margin-top: 9px; flex-wrap: wrap; }
+  .share-actions button { background: var(--track); color: var(--ink-dim); border: 1px solid transparent;
+    border-radius: 6px; padding: 4px 9px; font-size: 10.5px; font-weight: 700; cursor: pointer; }
+  .share-actions button:hover { color: var(--ink); border-color: var(--heat-soft); }
   .egg-prog { height: 4px; border-radius: 3px; background: var(--track); margin-top: 9px; overflow: hidden; }
   .egg-prog-f { height: 100%; width: 0; background: var(--heat); border-radius: 3px;
     transition: width 0.6s var(--ease); }
@@ -302,6 +314,20 @@
         </div>
         <div class="egg-prog"><div class="egg-prog-f" id="egg-prog-f"></div></div>
         <div class="egg-records" id="egg-records"></div>
+      </div>
+      <div class="share-box" id="share-box" hidden>
+        <div class="share-top">
+          <img class="share-qr" id="share-qr" alt="分享页二维码">
+          <div class="share-copy">
+            <div class="share-title" id="share-title">扫码分享战绩卡</div>
+            <div class="share-note" id="share-note">手机打开分享页后，可分享图片或保存后发布。</div>
+            <div class="share-url mono" id="share-url"></div>
+          </div>
+        </div>
+        <div class="share-actions">
+          <button id="share-open">打开页面</button>
+          <button id="share-reveal">Finder</button>
+        </div>
       </div>
       <div class="psec">
         <div class="ptitle">今日活跃 (会话)</div>
@@ -489,7 +515,23 @@
     btn.textContent = "生成中…"; btn.disabled = true;
     try {
       const r = JSON.parse(await window.pywebview.api.share_card());
-      btn.textContent = r.ok ? "已生成 ✓ (Finder)" : "失败";
+      if (r.ok) {
+        window._sharePayload = r;
+        $("share-box").hidden = false;
+        $("share-qr").src = r.qr || "";
+        $("share-url").textContent = r.url || r.path || "";
+        $("share-title").textContent = r.https ? "扫码分享战绩卡" : "本地分享页已生成";
+        $("share-note").textContent = r.https
+          ? "手机扫码打开 HTTPS 分享页，可分享图片或保存后发布。"
+          : "未拿到 HTTPS tunnel；可在本机打开页面，或从 Finder 手动分享 PNG。";
+        btn.textContent = r.https ? "二维码已生成 ✓" : "本地页已生成 ✓";
+        setTimeout(fitWindow, 40);
+      } else {
+        btn.textContent = "失败";
+        $("share-box").hidden = false;
+        $("share-title").textContent = "生成失败";
+        $("share-note").textContent = r.error || "请稍后重试";
+      }
     } catch (e) { btn.textContent = "失败"; }
     setTimeout(() => { btn.textContent = orig; btn.disabled = false; }, 3500);
   }
@@ -577,6 +619,16 @@
     $("panel").addEventListener("mousedown", e => e.stopPropagation());
     $("s-save").addEventListener("click", e => { e.stopPropagation(); saveSettings(); });
     $("share-btn").addEventListener("click", e => { e.stopPropagation(); shareCard(); });
+    $("share-open").addEventListener("click", e => {
+      e.stopPropagation();
+      const p = window._sharePayload || {};
+      if (p.url) window.pywebview.api.open_url(p.url);
+    });
+    $("share-reveal").addEventListener("click", e => {
+      e.stopPropagation();
+      const p = window._sharePayload || {};
+      if (p.path) window.pywebview.api.reveal_path(p.path);
+    });
     loadConfig();   // populate the settings inputs up front (cheap, not gated on the panel scan)
     tick();
     tickCost();

@@ -240,7 +240,7 @@
   .egg-prog { height: 4px; border-radius: 3px; background: var(--track); margin-top: 9px; overflow: hidden; }
   .egg-prog-f { height: 100%; width: 0; background: var(--heat); border-radius: 3px;
     transition: width 0.6s var(--ease); }
-  .egg-records { font-size: 10.5px; color: var(--ink-faint); margin-top: 7px; display: flex; gap: 12px; }
+  .egg-records { font-size: 10.5px; color: var(--ink-faint); margin-top: 7px; display: flex; flex-wrap: wrap; gap: 6px 12px; }
   .egg-records b { color: var(--ink-dim); font-weight: 700; }
 
   @media (prefers-reduced-motion: reduce) {
@@ -476,7 +476,11 @@
         ? `♾️ 生涯 <b>${tok(b.lifetime.lifetime_tokens)}</b>` : "";
       const rec = b.record_day ? `💥 最高日 <b>${tok(b.record_day.total)}</b>` : "";
       const bs = b.best_streak > 0 ? `🏆 连续 <b>${b.best_streak}天</b>` : "";
-      $("egg-records").innerHTML = [lf, bs, rec].filter(Boolean).map(s => `<span>${s}</span>`).join("");
+      const ps = (b.peak_session && b.peak_session.total)
+        ? `🌪️ 单会话 <b>${tok(b.peak_session.total)}</b>` : "";
+      const ch = (b.cache_hit_rate >= 0.6)
+        ? `🧠 缓存 <b>${Math.round(b.cache_hit_rate * 100)}%</b>` : "";
+      $("egg-records").innerHTML = [lf, bs, rec, ps, ch].filter(Boolean).map(s => `<span>${s}</span>`).join("");
     } catch (e) {}
   }
   async function shareCard() {

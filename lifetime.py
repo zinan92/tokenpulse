@@ -18,16 +18,18 @@ import os
 from datetime import date, datetime, timedelta
 
 import history
+import peaks
 
 LIFETIME_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), ".lifetime.json")
-SCHEMA_VERSION = 1
+SCHEMA_VERSION = 2
 BACKFILL_DAYS = 400  # wider than any plausible local-log retention
 
 
 def _empty() -> dict:
     return {"version": SCHEMA_VERSION, "first_use_date": None, "counted_through": None,
             "total_tokens": 0, "days_active": 0, "by_tool": {"claude": 0, "codex": 0},
-            "peak_day": None, "backfill_complete": False, "backfilled_at": None}
+            "peak_day": None, "peak_session": None,
+            "backfill_complete": False, "backfilled_at": None}
 
 
 def _load() -> dict:
@@ -72,15 +74,19 @@ def _backfill(now: datetime) -> dict:
             continue  # today still accruing — counted live at read time
         _fold_day(acc, r)
     acc["counted_through"] = (today - timedelta(days=1)).isoformat()
+    acc["peak_session"] = peaks.scan_session_peak()  # full one-time peak scan
     acc["backfill_complete"] = True
     acc["backfilled_at"] = now.astimezone().isoformat()
     return acc
 
 
-def update(now: datetime | None = None, allow_backfill: bool = False) -> dict:
+def update(now: datetime | None = None, allow_backfill: bool = False,
+           refresh_peak: bool = False) -> dict:
     """Keep the store current through yesterday. The one-time backfill only runs
     when allow_backfill=True (the warm thread); otherwise an un-backfilled store
-    is returned as-is so reads never block on the full scan."""
+    is returned as-is so reads never block on the full scan. refresh_peak (warm
+    thread only) re-derives the peak-session via an idempotent max — full scan the
+    first time (migrating a v1 store with no peak_session), recent files after."""
     now = now or datetime.now().astimezone()
     today = now.astimezone().date()
     d = _load()
@@ -90,19 +96,27 @@ def update(now: datetime | None = None, allow_backfill: bool = False) -> dict:
         d = _backfill(now)
         _save(d)
         return d
+    changed = False
     last = date.fromisoformat(d["counted_through"]) if d.get("counted_through") else None
     yesterday = today - timedelta(days=1)
-    if last and last >= yesterday:
-        return d  # already current
-    gap = (yesterday - last).days if last else BACKFILL_DAYS
-    dt = history.daily_tokens(now, days=min(BACKFILL_DAYS, gap + 2))
-    for r in dt["series"]:
-        rd = date.fromisoformat(r["date"])
-        if (last and rd <= last) or rd >= today:
-            continue
-        _fold_day(d, r)
-    d["counted_through"] = yesterday.isoformat()
-    _save(d)
+    if not (last and last >= yesterday):
+        gap = (yesterday - last).days if last else BACKFILL_DAYS
+        dt = history.daily_tokens(now, days=min(BACKFILL_DAYS, gap + 2))
+        for r in dt["series"]:
+            rd = date.fromisoformat(r["date"])
+            if (last and rd <= last) or rd >= today:
+                continue
+            _fold_day(d, r)
+        d["counted_through"] = yesterday.isoformat()
+        changed = True
+    if refresh_peak:
+        floor = 0.0 if d.get("peak_session") is None else history._floor_mtime(today - timedelta(days=2))
+        newpeak = peaks.pick_larger(d.get("peak_session"), peaks.scan_session_peak(floor))
+        if newpeak != d.get("peak_session"):
+            d["peak_session"] = newpeak
+            changed = True
+    if changed:
+        _save(d)
     return d
 
 
@@ -122,12 +136,13 @@ def summary(now: datetime | None = None, today_tokens: int = 0,
         peak = {"date": today.isoformat(), "total": today_tokens}
     return {"lifetime_tokens": total, "by_tool": {"claude": cl, "codex": cx},
             "days_active": days, "first_use_date": d["first_use_date"],
-            "peak_day": peak, "pending": not d.get("backfill_complete", False)}
+            "peak_day": peak, "peak_session": d.get("peak_session"),
+            "pending": not d.get("backfill_complete", False)}
 
 
 def ensure_backfill(now: datetime | None = None) -> dict:
     """Warm-thread entry point: do the heavy one-time scan + keep current."""
-    return update(now, allow_backfill=True)
+    return update(now, allow_backfill=True, refresh_peak=True)
 
 
 if __name__ == "__main__":

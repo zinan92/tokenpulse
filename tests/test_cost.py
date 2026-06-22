@@ -276,3 +276,9 @@ def test_humanize():
     assert cost.humanize_tokens(2_900_000_000) == "2.9B"
     assert cost.humanize_tokens(47_000_000) == "47M"
     assert cost.humanize_cost(2174.789) == "$2,174.79"
+
+
+def test_cache_hit_rate():
+    assert cost.cache_hit_rate(80, 100) == 0.8
+    assert cost.cache_hit_rate(0, 0) == 0.0      # divide-by-zero guard
+    assert cost.cache_hit_rate(150, 100) == 1.0  # clamp >100%

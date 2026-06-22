@@ -147,6 +147,7 @@ def _claude_summary(now: datetime) -> dict:
     seen: set = set()
     cost_today = cost_30d = 0.0
     tok_today = tok_30d = 0
+    cache_read_30d = input_30d = 0  # for cache hit-rate (Claude buckets are disjoint)
     # latest session = most-recently-modified transcript file
     sessions: dict[str, dict] = {}  # path -> {mtime, tokens}
     for f in glob.glob(os.path.expanduser("~/.claude/projects/**/*.jsonl"), recursive=True):
@@ -188,6 +189,8 @@ def _claude_summary(now: datetime) -> dict:
                 c = _cost(price_for(msg.get("model", ""), prices), inp, cc, cr, out)
                 cost_30d += c
                 tok_30d += toks
+                cache_read_30d += cr
+                input_30d += inp + cc + cr  # disjoint buckets; output excluded
                 if ld == today:
                     cost_today += c
                     tok_today += toks
@@ -198,7 +201,8 @@ def _claude_summary(now: datetime) -> dict:
     latest = max(sessions.values(), key=lambda s: s["mtime"], default={"tokens": 0})
     return {"cost_today": cost_today, "cost_30d": cost_30d,
             "tokens_today": tok_today, "tokens_30d": tok_30d,
-            "latest_tokens": latest["tokens"]}
+            "latest_tokens": latest["tokens"],
+            "cache_read_30d": cache_read_30d, "input_30d": input_30d}
 
 
 # -------------------------------------------------------------------- Codex
@@ -228,6 +232,7 @@ def _codex_summary(now: datetime) -> dict:
                    - timedelta(days=1)).timestamp()
     cost_today = cost_30d = 0.0
     tok_today = tok_30d = 0
+    cache_read_30d = input_30d = 0  # Codex cached_input is a SUBSET of input
     latest_mtime, latest_tokens = 0.0, 0
     chosen: dict[str, str] = {}
     mtimes: dict[str, float] = {}
@@ -273,6 +278,8 @@ def _codex_summary(now: datetime) -> dict:
                 cost_30d += c
                 tok_30d += toks
                 sess_tokens += toks
+                cache_read_30d += cached
+                input_30d += inp  # cached is already a subset of input
                 if ld == today:
                     cost_today += c
                     tok_today += toks
@@ -282,7 +289,8 @@ def _codex_summary(now: datetime) -> dict:
             latest_mtime, latest_tokens = mt, sess_tokens
     return {"cost_today": cost_today, "cost_30d": cost_30d,
             "tokens_today": tok_today, "tokens_30d": tok_30d,
-            "latest_tokens": latest_tokens}
+            "latest_tokens": latest_tokens,
+            "cache_read_30d": cache_read_30d, "input_30d": input_30d}
 
 
 # ----------------------------------------------------------------- public API
@@ -315,6 +323,13 @@ def humanize_tokens(n: int) -> str:
 
 def humanize_cost(c: float) -> str:
     return f"${c:,.2f}"
+
+
+def cache_hit_rate(cache_read: int, total_input: int) -> float:
+    """rolling-30d cache_read / total input tokens, clamped to [0,1]."""
+    if total_input <= 0:
+        return 0.0
+    return min(1.0, cache_read / total_input)
 
 
 if __name__ == "__main__":

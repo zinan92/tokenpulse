@@ -91,7 +91,8 @@ def _tok(n: int) -> str:
     return cost.humanize_tokens(n)
 
 
-def _build_badges(life, streak, best_streak, record_total, per_tool30, cur30, prev30, best30) -> list:
+def _build_badges(life, streak, best_streak, record_total, per_tool30, cur30, prev30, best30,
+                  hit_rate=0.0, peak_session=None) -> list:
     """Earned badges across many dimensions. hero=screenshot-headline."""
     out = []
 
@@ -112,6 +113,12 @@ def _build_badges(life, streak, best_streak, record_total, per_tool30, cur30, pr
     add(record_total >= 1 * BILLION, "☄️", "十亿日 Billion-Day", hero=True, expert=True)
     add(500 * MILLION <= record_total < 1 * BILLION, "🌋", "五亿日", hero=False, expert=True)
     add(250 * MILLION <= record_total < 500 * MILLION, "💥", "爆燃日", hero=False)
+    # single-SESSION intensity (one unbroken session, distinct from a whole day) --
+    pst = (peak_session or {}).get("total", 0)
+    add(pst >= 1 * BILLION, "🌪️", "单会话 1B", hero=True, expert=True)
+    add(500 * MILLION <= pst < 1 * BILLION, "🌀", "单会话 500M", hero=True, expert=True)
+    add(250 * MILLION <= pst < 500 * MILLION, "🔥", "单会话 250M", hero=False, expert=True)
+    add(100 * MILLION <= pst < 250 * MILLION, "💢", "单会话 100M", hero=False)
     # streaks -------------------------------------------------------------------
     add(best_streak >= 365, "♾️", "不熄之核 365d", hero=True, expert=True)
     add(100 <= best_streak < 365, "⛓️", "铁流 100d", hero=True, expert=True)
@@ -123,6 +130,9 @@ def _build_badges(life, streak, best_streak, record_total, per_tool30, cur30, pr
     # velocity ------------------------------------------------------------------
     add(prev30 > 0 and cur30 >= 1.5 * prev30, "🚀", "扩产 Scaling-Up", hero=False, expert=True)
     add(cur30 > 0 and best30 > 0 and cur30 >= best30, "🌊", "月度新高", hero=False)
+    # context-engineering mastery (cache hit-rate; mutually exclusive) -----------
+    add(hit_rate >= 0.80, "🧠", "缓存宗师 Cache Virtuoso", hero=True, expert=True)
+    add(0.60 <= hit_rate < 0.80, "📦", "上下文大师 Context Loader", hero=False, expert=True)
 
     out.sort(key=lambda b: (not b["hero"], not b["expert"]))
     return out
@@ -156,8 +166,13 @@ def card_data(now: datetime | None = None, config: dict | None = None) -> dict:
     cur30 = max(sum(totals[-30:]), monthly_tokens)
     best30 = max(_best_window(totals, 30), cur30)
 
+    cache_read_30d = costs["claude"].get("cache_read_30d", 0) + costs["codex"].get("cache_read_30d", 0)
+    input_30d = costs["claude"].get("input_30d", 0) + costs["codex"].get("input_30d", 0)
+    hit_rate = cost.cache_hit_rate(cache_read_30d, input_30d)
+
     badges = _build_badges(life, streak, best_streak,
-                           (record_day or {}).get("total", 0), per_tool30, cur30, prev30, best30)
+                           (record_day or {}).get("total", 0), per_tool30, cur30, prev30, best30,
+                           hit_rate=hit_rate, peak_session=life.get("peak_session"))
 
     return {
         "tier": _tier(monthly_tokens),
@@ -175,6 +190,8 @@ def card_data(now: datetime | None = None, config: dict | None = None) -> dict:
             "is_high_water": cur30 > 0 and best30 > 0 and cur30 >= best30,
             "founding": True,           # honest local stand-in until a real pool exists
         },
+        "cache_hit_rate": round(hit_rate, 3),
+        "peak_session": life.get("peak_session"),
         "days_tracked": rec["days_tracked"],
         "avg": p["avg"],
         "hit_days": p["hit_days"],

@@ -3,10 +3,18 @@ import os
 import sys
 from datetime import datetime, timezone
 
+import pytest
+
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 import lifetime  # noqa: E402
 
 M = 1_000_000
+
+
+@pytest.fixture(autouse=True)
+def _no_peak_scan(monkeypatch):
+    # the peak-session scan hits real logs; stub it so lifetime tests stay fast + hermetic
+    monkeypatch.setattr(lifetime.peaks, "scan_session_peak", lambda floor=0.0: None)
 
 
 def _series(rows):
@@ -59,3 +67,16 @@ def test_increment_is_monotonic_and_idempotent(monkeypatch, tmp_path):
     a = lifetime.update(now)
     b = lifetime.update(now)
     assert a["total_tokens"] == b["total_tokens"] == 400 * M   # 100M + 300M, counted once
+
+
+def test_peak_session_stored_in_backfill(monkeypatch, tmp_path):
+    monkeypatch.setattr(lifetime, "LIFETIME_PATH", str(tmp_path / ".lifetime.json"))
+    monkeypatch.setattr(lifetime.history, "daily_tokens",
+                        lambda now, days, use_disk_cache=True: _series([("2026-06-20", 100 * M, 0)]))
+    monkeypatch.setattr(lifetime.peaks, "scan_session_peak",
+                        lambda floor=0.0: {"tool": "codex", "id": "x", "date": "2026-05-31", "total": 1019 * M})
+    now = datetime(2026, 6, 22, 12, tzinfo=timezone.utc)
+    lifetime.update(now, allow_backfill=True, refresh_peak=True)
+    s = lifetime.summary(now)
+    assert s["peak_session"]["total"] == 1019 * M
+    assert s["peak_session"]["tool"] == "codex"

@@ -110,7 +110,7 @@ def _warm_loop():
             history.daily_tokens(days=120)     # 120d series for velocity badges + best-30d
             cost.usage_summary("claude", ttl=0)  # keep cost warm so badges is instant
             cost.usage_summary("codex", ttl=0)
-            lifetime.update()                  # cheap daily increment (no backfill)
+            lifetime.update(refresh_peak=True)  # daily increment + peak-session refresh
         except Exception:  # noqa: BLE001
             pass
         time.sleep(480)  # ~8 min, under the 10-min in-memory TTL

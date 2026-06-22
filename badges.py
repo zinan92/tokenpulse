@@ -149,9 +149,12 @@ def card_data(now: datetime | None = None, config: dict | None = None) -> dict:
     # longer daily series for windows / velocity (cached, up to 120d)
     long = history.daily_tokens(now, days=120)["series"]
     totals = [r["total"] for r in long]
-    cur30 = sum(totals[-30:])
     prev30 = sum(totals[-60:-30]) if len(totals) >= 60 else 0
-    best30 = _best_window(totals, 30)
+    # cost.tokens_30d is the canonical "this month" figure; keep the daily-series
+    # windows consistent with it so the card can never show best-30d < this-month
+    # (the daily sum and cost's dedup differ by ~1%, which would contradict itself).
+    cur30 = max(sum(totals[-30:]), monthly_tokens)
+    best30 = max(_best_window(totals, 30), cur30)
 
     badges = _build_badges(life, streak, best_streak,
                            (record_day or {}).get("total", 0), per_tool30, cur30, prev30, best30)

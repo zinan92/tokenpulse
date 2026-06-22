@@ -13,6 +13,7 @@ from __future__ import annotations
 
 from datetime import datetime
 
+import continuity
 import cost
 import core
 import history
@@ -170,9 +171,22 @@ def card_data(now: datetime | None = None, config: dict | None = None) -> dict:
     input_30d = costs["claude"].get("input_30d", 0) + costs["codex"].get("input_30d", 0)
     hit_rate = cost.cache_hit_rate(cache_read_30d, input_30d)
 
+    # engagement (active/online time) — honest "≤30min-gap" stretch + per-day active.
+    # NB: inflated by background automation that emits timestamps; framed as 在线/活跃,
+    # not hands-on-keyboard. Non-hero so it never dominates the public card.
+    cont = continuity.summary(now)
+    active_series = history.daily_active_minutes(now, days=120)["series"]
+    peak_active_min = max((r["minutes"] for r in active_series), default=0)
+    lifetime_active_min = sum(r["minutes"] for r in active_series)
+
     badges = _build_badges(life, streak, best_streak,
                            (record_day or {}).get("total", 0), per_tool30, cur30, prev30, best30,
                            hit_rate=hit_rate, peak_session=life.get("peak_session"))
+    lh = cont.get("longest_hours", 0)
+    if lh >= 6:
+        badges.append({"icon": "🏃", "name": f"连续在线 {lh:.0f}h", "hero": False, "expert": True})
+    if peak_active_min >= 600:
+        badges.append({"icon": "⏱️", "name": f"单日 {peak_active_min / 60:.0f}h 在线", "hero": False, "expert": True})
 
     return {
         "tier": _tier(monthly_tokens),
@@ -192,6 +206,9 @@ def card_data(now: datetime | None = None, config: dict | None = None) -> dict:
         },
         "cache_hit_rate": round(hit_rate, 3),
         "peak_session": life.get("peak_session"),
+        "longest_run": cont,  # {longest_hours, longest_start, longest_end, ...}
+        "active": {"peak_minutes": peak_active_min, "lifetime_minutes": lifetime_active_min,
+                   "today_minutes": history.active_minutes_today_merged(now)},
         "days_tracked": rec["days_tracked"],
         "avg": p["avg"],
         "hit_days": p["hit_days"],

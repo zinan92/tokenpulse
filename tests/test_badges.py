@@ -59,6 +59,12 @@ def test_card_data_shape(monkeypatch):
     })
     monkeypatch.setattr(badges.history, "daily_tokens", lambda now=None, days=30: {
         "series": [{"date": f"d{i}", "total": 200 * M} for i in range(days)]})
+    monkeypatch.setattr(badges.history, "daily_active_minutes", lambda now=None, days=30: {
+        "series": [{"date": f"d{i}", "minutes": 120} for i in range(days)]})
+    monkeypatch.setattr(badges.history, "active_minutes_today_merged", lambda now=None: 90)
+    monkeypatch.setattr(badges.continuity, "summary", lambda now=None: {
+        "longest_hours": 7.5, "longest_seconds": 27000, "longest_start": None,
+        "longest_end": None, "gap_minutes": 30, "pending": False})
     monkeypatch.setattr(badges.lifetime, "summary", lambda now=None, **kw: {
         "lifetime_tokens": 12 * B, "by_tool": {"claude": 6 * B, "codex": 6 * B},
         "days_active": 80, "first_use_date": "2026-02-14",

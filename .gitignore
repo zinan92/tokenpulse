@@ -8,3 +8,5 @@ furnace-*.lock
 .models-pricing.json
 .card-out/
 .lifetime.json
+.continuity.json
+.active-cache.json

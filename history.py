@@ -267,6 +267,132 @@ def active_minutes_today(now: datetime | None = None) -> dict:
     }
 
 
+# ----------------------------------------------- merged daily active minutes
+# A per-day "active minutes" series merging BOTH tools into ONE timeline (never
+# claude+codex, which double-counts concurrently-open minutes). Same idle-gap
+# proxy caveat as active_minutes_today: a background session emitting heartbeats
+# while you're AFK inflates the figure (no app-focus signal exists).
+
+ACTIVE_CACHE_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), ".active-cache.json")
+
+
+def _claude_ts_by_day(start, floor_mtime) -> dict:
+    out: dict = {}
+    for f in glob.glob(core.CLAUDE_GLOB, recursive=True):
+        try:
+            if os.path.getmtime(f) < floor_mtime:
+                continue
+        except OSError:
+            continue
+        try:
+            with open(f, encoding="utf-8") as fh:
+                for line in fh:
+                    if line.find('"timestamp"') < 0:
+                        continue
+                    try:
+                        d = json.loads(line)
+                    except (ValueError, TypeError):
+                        continue
+                    dt = core._parse_ts(d.get("timestamp"))
+                    if not dt:
+                        continue
+                    ld = dt.astimezone().date()
+                    if ld < start:
+                        continue
+                    out.setdefault(ld, []).append(dt.timestamp())
+        except OSError:
+            continue
+    return out
+
+
+def _codex_ts_by_day(start, floor_mtime) -> dict:
+    out: dict = {}
+    seen_uid: set = set()
+    for pat in core.CODEX_GLOBS:
+        for f in glob.glob(pat, recursive=True):
+            try:
+                if os.path.getmtime(f) < floor_mtime:
+                    continue
+            except OSError:
+                continue
+            uid = core._codex_session_uuid(f)
+            if uid in seen_uid:
+                continue
+            seen_uid.add(uid)
+            try:
+                with open(f, encoding="utf-8") as fh:
+                    for line in fh:
+                        if line.find('"timestamp"') < 0:
+                            continue
+                        try:
+                            d = json.loads(line)
+                        except (ValueError, TypeError):
+                            continue
+                        dt = core._parse_ts(d.get("timestamp"))
+                        if not dt:
+                            continue
+                        ld = dt.astimezone().date()
+                        if ld < start:
+                            continue
+                        out.setdefault(ld, []).append(dt.timestamp())
+            except OSError:
+                continue
+    return out
+
+
+def _merged_minutes_by_day(start, floor_mtime) -> dict:
+    cl = _claude_ts_by_day(start, floor_mtime)
+    cx = _codex_ts_by_day(start, floor_mtime)
+    return {d: _active_minutes(cl.get(d, []) + cx.get(d, [])) for d in (set(cl) | set(cx))}
+
+
+def _load_active_disk() -> dict:
+    try:
+        return dict(json.load(open(ACTIVE_CACHE_PATH, encoding="utf-8")))
+    except (OSError, ValueError):
+        return {}
+
+
+def _save_active_disk(cache: dict, today) -> None:
+    keep = (today - timedelta(days=PRUNE_DAYS)).isoformat()
+    pruned = {d: v for d, v in cache.items() if d >= keep}
+    try:
+        json.dump(pruned, open(ACTIVE_CACHE_PATH, "w", encoding="utf-8"))
+    except OSError:
+        pass
+
+
+def daily_active_minutes(now: datetime | None = None, days: int = 30,
+                         use_disk_cache: bool = True) -> dict:
+    """Per-day merged active minutes (oldest→newest). Today+yesterday rescanned;
+    older days persisted (0 for idle days so they don't re-trigger backfill)."""
+    now = now or datetime.now().astimezone()
+    today, start, _ = _window(now, days)
+    window = [start + timedelta(days=i) for i in range(days)]
+    if not use_disk_cache:
+        m = _merged_minutes_by_day(start, _floor_mtime(start))
+        cache = {d.isoformat(): m.get(d, 0) for d in window}
+    else:
+        cache = _load_active_disk()
+        recompute_from = today - timedelta(days=1)
+        older = [d for d in window if d < recompute_from]
+        missing = any(d.isoformat() not in cache for d in older)
+        backfill_from = start if missing else recompute_from
+        fresh = _merged_minutes_by_day(backfill_from, _floor_mtime(backfill_from))
+        for d in window:
+            if d >= backfill_from:
+                cache[d.isoformat()] = fresh.get(d, 0)
+        _save_active_disk(cache, today)
+    series = [{"date": d.isoformat(), "minutes": cache.get(d.isoformat(), 0)} for d in window]
+    return {"days": days, "series": series}
+
+
+def active_minutes_today_merged(now: datetime | None = None) -> int:
+    now = now or datetime.now().astimezone()
+    today = now.astimezone().date()
+    return _active_minutes(_claude_timestamps_today(today) + _codex_timestamps_today(today))
+
+
 # ----------------------------------------------------------- streak / best
 
 def streak_and_best(series: list, target: int) -> dict:

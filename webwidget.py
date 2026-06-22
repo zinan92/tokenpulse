@@ -21,6 +21,7 @@ import subprocess
 import badges
 import card
 import configio
+import continuity
 import cost
 import history
 import lifetime
@@ -101,16 +102,19 @@ def _warm_loop():
     so opening the detail panel is instant, not a 14s wait."""
     time.sleep(25)  # let the first paint (core/cost/limits) finish uncontended
     try:
-        lifetime.ensure_backfill()  # one-time full-log scan for the lifetime trophy (~15s)
+        lifetime.ensure_backfill()    # one-time full-log scan for the lifetime trophy
+        continuity.ensure_backfill()  # one-time scan for the longest-run record
     except Exception:  # noqa: BLE001
         pass
     while True:
         try:
             history.panel_data(ttl=0)          # panel + egg/badges (share card)
             history.daily_tokens(days=120)     # 120d series for velocity badges + best-30d
+            history.daily_active_minutes(days=120)  # merged active-minutes cache (marathon)
             cost.usage_summary("claude", ttl=0)  # keep cost warm so badges is instant
             cost.usage_summary("codex", ttl=0)
             lifetime.update(refresh_peak=True)  # daily increment + peak-session refresh
+            continuity.update()                 # cheap fold of settled days
         except Exception:  # noqa: BLE001
             pass
         time.sleep(480)  # ~8 min, under the 10-min in-memory TTL

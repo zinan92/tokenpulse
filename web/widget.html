@@ -475,12 +475,13 @@
       const lf = (b.lifetime && b.lifetime.lifetime_tokens)
         ? `♾️ 生涯 <b>${tok(b.lifetime.lifetime_tokens)}</b>` : "";
       const rec = b.record_day ? `💥 最高日 <b>${tok(b.record_day.total)}</b>` : "";
-      const bs = b.best_streak > 0 ? `🏆 连续 <b>${b.best_streak}天</b>` : "";
       const ps = (b.peak_session && b.peak_session.total)
         ? `🌪️ 单会话 <b>${tok(b.peak_session.total)}</b>` : "";
       const ch = (b.cache_hit_rate >= 0.6)
         ? `🧠 缓存 <b>${Math.round(b.cache_hit_rate * 100)}%</b>` : "";
-      $("egg-records").innerHTML = [lf, bs, rec, ps, ch].filter(Boolean).map(s => `<span>${s}</span>`).join("");
+      const lr = (b.longest_run && b.longest_run.longest_hours >= 1)
+        ? `🏃 连续在线 <b>${Math.round(b.longest_run.longest_hours)}h</b>` : "";
+      $("egg-records").innerHTML = [lf, ps, ch, lr, rec].filter(Boolean).map(s => `<span>${s}</span>`).join("");
     } catch (e) {}
   }
   async function shareCard() {

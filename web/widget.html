@@ -221,6 +221,16 @@
             border-radius: 6px; padding: 4px 16px; font-size: 11px; font-weight: 700;
             cursor: pointer; transition: background 0.2s, color 0.2s; }
   #s-save:hover { background: var(--heat); color: #1a1100; }
+  .provs { display: flex; flex-direction: column; gap: 5px; margin: 0 0 9px; }
+  .prov { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; font-size: 11px; }
+  .prov label { display: flex; align-items: center; gap: 5px; cursor: pointer; }
+  .prov b { font-weight: 600; color: var(--ink); }
+  .pbadge { font-size: 9px; padding: 1px 5px; border-radius: 6px; background: var(--track); color: var(--ink-faint); }
+  .pbadge.tokens { background: var(--heat-soft); color: var(--heat); }
+  .prov .pkey { width: 108px; font-size: 10px; padding: 2px 6px; background: var(--bg-0);
+    border: 1px solid var(--track); border-radius: 5px; color: var(--ink); }
+  .prov .pkey:focus { outline: none; border-color: var(--heat); }
+  .prov .pok { color: oklch(0.72 0.13 150); font-size: 10px; }
   .smsg { font-size: 10.5px; color: var(--ink-faint); }
   .smsg.ok { color: var(--heat); }
   .smsg.err { color: var(--alarm); }
@@ -347,6 +357,8 @@
           <span class="at">@</span><input id="s-handle" class="wider" placeholder="yourhandle"><i>战绩卡署名</i></div>
         <div class="srow"><span class="slbl">小红书号</span>
           <input id="s-xhs" class="wider" placeholder="RED ID"><i>选填</i></div>
+        <div class="srow"><span class="slbl">追踪厂商</span><i>勾选要统计的厂商；只有 tokens 计入烧量</i></div>
+        <div id="s-providers" class="provs"></div>
         <div class="srow"><button id="s-save">保存</button>
           <span id="s-msg" class="smsg"></span></div>
       </div>
@@ -547,6 +559,33 @@
   }
   async function loadConfig() {
     try { populateSettings(JSON.parse(await window.pywebview.api.config())); } catch (e) {}
+    loadProviders();
+  }
+  async function loadProviders() {
+    try {
+      const d = JSON.parse(await window.pywebview.api.providers_catalog());
+      if (!d || d.error) return;
+      const box = $("s-providers"); box.innerHTML = "";
+      (d.providers || []).forEach(p => {
+        const row = document.createElement("div"); row.className = "prov";
+        const key = p.needs_key
+          ? `<input class="pkey" data-pid="${p.id}" type="password" placeholder="${p.has_key ? "已设置 ••" : "API key"}">`
+          : "";
+        row.innerHTML = `<label><input type="checkbox" data-pid="${p.id}" ${p.enabled ? "checked" : ""}>`
+          + `<b>${p.label}</b> <span class="pbadge ${p.metric}">${p.metric_label}</span></label>`
+          + key + (p.note ? ` <i>${p.note}</i>` : "");
+        box.appendChild(row);
+      });
+    } catch (e) {}
+  }
+  async function saveProviders() {
+    const enabled = [...document.querySelectorAll("#s-providers input[type=checkbox]")]
+      .filter(c => c.checked).map(c => c.dataset.pid);
+    const keys = {};
+    document.querySelectorAll("#s-providers input.pkey").forEach(i => {
+      if (i.value.trim()) keys[i.dataset.pid] = i.value.trim();
+    });
+    try { await window.pywebview.api.save_providers(JSON.stringify(enabled), JSON.stringify(keys)); } catch (e) {}
   }
   async function saveSettings() {
     const msg = $("s-msg");
@@ -559,6 +598,7 @@
     if (tx !== undefined) (partial.targets ??= {}).codex = { weekday: tx, weekend: tx };
     partial.handle = $("s-handle").value.trim().replace(/^@/, "");  // empty -> default
     partial.xhs_id = $("s-xhs").value.trim();  // empty -> hidden on card
+    await saveProviders();   // enabled set -> config, keys -> keychain
     try {
       const r = JSON.parse(await window.pywebview.api.save_config(JSON.stringify(partial)));
       if (r.ok) {

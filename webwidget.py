@@ -26,6 +26,7 @@ import continuity
 import cost
 import history
 import lifetime
+import providers
 import share
 import webdata
 
@@ -100,6 +101,48 @@ class Api:
         # config.json is re-read on every tick, so the change applies on the next
         # refresh; nothing to invalidate here.
         return json.dumps(configio.save_partial(partial), default=str)
+
+    def providers_catalog(self) -> str:
+        """All providers + the enabled set + whether each api provider has a key
+        (the key value itself is never returned)."""
+        try:
+            cfg = core.load_config()
+            enabled = providers.enabled_ids(cfg)
+            out = []
+            for pid in providers.all_ids():
+                m = providers.meta(pid)
+                out.append({
+                    "id": pid, "label": m.get("label", pid), "kind": m.get("kind"),
+                    "metric": providers.metric(pid), "metric_label": providers.metric_label(pid),
+                    "note": m.get("note", ""), "needs_key": providers.is_api(pid),
+                    "enabled": pid in enabled,
+                    "has_key": bool(providers.api_key(pid, cfg)) if providers.is_api(pid) else None,
+                })
+            return json.dumps({"providers": out, "enabled": enabled}, default=str)
+        except Exception as exc:  # noqa: BLE001
+            return json.dumps({"error": str(exc)})
+
+    def save_providers(self, enabled_str: str, keys_str: str) -> str:
+        """Save the enabled set to config.json and any new api keys to the Keychain."""
+        try:
+            enabled = json.loads(enabled_str) if enabled_str else []
+            keys = json.loads(keys_str) if keys_str else {}
+        except (ValueError, TypeError):
+            return json.dumps({"ok": False, "errors": ["bad json"]})
+        for pid, val in (keys or {}).items():
+            v = (val or "").strip()
+            if v and pid in providers.REGISTRY:
+                providers.keychain_set(pid, v)   # keys -> keychain, never config
+        res = configio.save_partial({"providers": {"enabled": list(enabled)}})
+        return json.dumps(res, default=str)
+
+    def provider_status(self, pid: str) -> str:
+        """Live-fetch one api provider's status (a 'test this key' button)."""
+        try:
+            s = providers.summary(pid, config=core.load_config())
+            return json.dumps(s or {"available": False, "reason": "no-fetcher"}, default=str)
+        except Exception as exc:  # noqa: BLE001
+            return json.dumps({"available": False, "reason": str(exc)})
 
     def fit(self, height) -> bool:
         """Resize the window to the content height the UI measured — so nothing

@@ -3,6 +3,9 @@ __pycache__/
 *.pyc
 .DS_Store
 config.json
+build/
+dist/
+*.egg-info/
 .history-cache.json
 furnace-state.json
 furnace-*.lock

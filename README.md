@@ -130,6 +130,8 @@ web/widget.html   (Telegram 推送)  (终端状态)    (可选·自动烧额度)
 
 ## 快速开始
 
+**前置**：macOS · `python3 ≥ 3.11`。可选：`cloudflared`（分享走临时 HTTPS）、CodexBar（补 Claude 的 session/weekly %）。
+
 ```bash
 # 1. 克隆
 git clone https://github.com/zinan92/tokenpulse.git
@@ -145,8 +147,13 @@ cd tokenpulse
 pip3 install -r requirements.txt
 python3 cli.py          # 终端看今日状态（最轻量，core/cli 纯 stdlib）
 python3 webwidget.py    # 桌面 goad widget（无边框置顶，可拖动）
+
+# —— 只想要终端命令？装个全局 CLI（纯 stdlib，零重依赖）——
+pipx install .          # 之后直接 `tokenpulse` / `tokenpulse-nudge`
 ```
 
+> 桌面 widget 自带 `web/` UI + launchd，所以走 `./install.sh`（从 checkout 跑）；`pipx` 只装终端 `tokenpulse` 命令。
+>
 > **CodexBar 可选**（[steipete/codexbar](https://github.com/steipete/codexbar)）：只用于 **Claude** 的 session/weekly % 那两栏。没装也能跑——token、cost、Codex 额度全部正常，Claude 额度那两栏显示 `—`。
 
 ## 功能一览
@@ -205,6 +212,8 @@ tokenpulse/
 ├── cli.py             # 终端状态
 ├── config.example.json # 出厂模板（owner 字段留空）；install.sh 首次拷成 config.json
 ├── config.json        # 你的本地实例（gitignore，不入库）：目标 / 署名 / 阈值 / furnace
+├── install.sh / uninstall.sh  # launchd 常驻装/卸（含装依赖 + 首跑配置）
+├── pyproject.toml     # 打包：pipx 装全局 `tokenpulse` / `tokenpulse-nudge` 命令
 └── tests/             # pytest（99 passing）
 ```
 
@@ -255,7 +264,7 @@ cli_flags:
     type: boolean
     description: list recent resumable Claude/Codex sessions
 programmatic_entry: "import webdata; webdata.core_payload()  # goal/pace/limits · webdata.cost_payload() cost · import badges; badges.card_data() tier/lifetime/badges · import card; card.make_card() render PNG · import share; share.build_share_payload(path) QR/share page"
-install_command: "pip3 install --user -r requirements.txt   # pywebview for the widget, Pillow/qrcode for card + QR; core/cli/nudge are stdlib"
+install_command: "./install.sh   # deps + first-run config + launchd widget/nudge   ·   or: pipx install .   # global `tokenpulse` CLI (stdlib only)"
 start_command: "python3 webwidget.py   # widget  ·  python3 cli.py   # status  ·  python3 nudge.py   # telegram"
 requires: "nothing external for core (tokens/cost via models.dev, Codex limits local); CodexBar optional, only for Claude's session/weekly %"
 ```

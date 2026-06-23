@@ -1,0 +1,42 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "tokenpulse"
+version = "0.1.0"
+description = "A desktop coach that goads you to burn your daily LLM token quota — 西游记 leveling + a shareable 战绩卡."
+readme = "README.md"
+requires-python = ">=3.11"
+authors = [{ name = "xparkzz" }]
+keywords = ["claude-code", "codex", "tokens", "usage", "macos", "widget", "goad"]
+classifiers = [
+  "License :: Other/Proprietary License",
+  "Operating System :: MacOS :: MacOS X",
+  "Programming Language :: Python :: 3",
+  "Environment :: MacOS X",
+]
+# The CLI/nudge are pure stdlib. The card needs Pillow+qrcode; the desktop
+# widget additionally needs pywebview AND the repo's web/ UI, so the widget is
+# run from a checkout (./install.sh), not pip-installed — see README.
+dependencies = []
+
+[project.optional-dependencies]
+card = ["Pillow>=10.1", "qrcode[pil]>=7"]
+widget = ["pywebview>=4", "Pillow>=10.1", "qrcode[pil]>=7"]
+
+[project.scripts]
+tokenpulse = "cli:main"
+tokenpulse-nudge = "nudge:main"
+
+[project.urls]
+Homepage = "https://github.com/zinan92/tokenpulse"
+Builder = "https://park-ai-intel.com/tokenpulse"
+
+[tool.setuptools]
+# flat layout: the logic + CLI + card/share modules (no web/ data, no GUI host)
+py-modules = [
+  "core", "cost", "limits", "badges", "card", "lifetime", "peaks",
+  "continuity", "history", "configio", "sessions", "webdata",
+  "nudge", "cli", "share", "fuel", "furnace",
+]

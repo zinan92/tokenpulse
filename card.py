@@ -45,10 +45,19 @@ EMOJI_STRIKE = 160
 
 
 def _f(path, size, index=0):
+    """Load a TrueType font, degrading gracefully so the card never fails to
+    render: requested face → Helvetica → Pillow's bundled scalable default
+    (the last works on a stripped/non-macOS box, just without CJK glyphs)."""
+    for loader in (lambda: ImageFont.truetype(path, size, index=index),
+                   lambda: ImageFont.truetype(SANS, size)):
+        try:
+            return loader()
+        except OSError:
+            continue
     try:
-        return ImageFont.truetype(path, size, index=index)
-    except OSError:
-        return ImageFont.truetype(SANS, size)
+        return ImageFont.load_default(size)   # Pillow >= 10.1: scalable default
+    except (TypeError, OSError):
+        return ImageFont.load_default()
 
 
 def _disp(size):

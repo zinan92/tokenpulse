@@ -59,7 +59,13 @@ class Api:
 
     def badges(self) -> str:
         try:
-            return json.dumps(badges.card_data(), default=str)
+            import moments
+            d = badges.card_data()
+            try:
+                d["moments"] = moments.check(d)   # proud crossings since last open → share nudge
+            except Exception:  # noqa: BLE001
+                d["moments"] = []
+            return json.dumps(d, default=str)
         except Exception as exc:  # noqa: BLE001
             return json.dumps({"error": str(exc)})
 

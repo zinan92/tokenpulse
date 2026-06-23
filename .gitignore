@@ -14,3 +14,4 @@ furnace-*.lock
 .lifetime.json
 .continuity.json
 .active-cache.json
+.moments.json

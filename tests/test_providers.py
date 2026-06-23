@@ -29,10 +29,31 @@ def test_metric_kind_and_api():
     assert providers.is_api("glm") and not providers.is_api("codex")
 
 
-def test_api_key_reads_config():
+def test_is_token_provider_gates_the_headline():
+    assert providers.is_token_provider("glm") and providers.is_token_provider("claude")
+    assert not providers.is_token_provider("deepseek")   # credits, not tokens
+    assert not providers.is_token_provider("minimax")    # requests, not tokens
+    assert providers.metric_label("deepseek") == "余额"
+
+
+def test_api_key_resolution_order(monkeypatch):
+    # hermetic: no keychain item, no env vars → falls through to config
+    monkeypatch.setattr(providers, "_keychain_get", lambda pid: "")
+    for v in providers.ENV_KEYS.values():
+        monkeypatch.delenv(v, raising=False)
     cfg = {"providers": {"keys": {"glm": "  abc.def  "}}}
-    assert providers.api_key("glm", cfg) == "abc.def"   # trimmed
+    assert providers.api_key("glm", cfg) == "abc.def"    # config, trimmed
     assert providers.api_key("deepseek", cfg) == ""
+    # keychain wins over config
+    monkeypatch.setattr(providers, "_keychain_get", lambda pid: "kc-key" if pid == "glm" else "")
+    assert providers.api_key("glm", cfg) == "kc-key"
+
+
+def test_summary_dispatch_routes_to_fetcher(monkeypatch):
+    import providers_api
+    monkeypatch.setattr(providers_api, "glm_summary", lambda now=None, config=None: {"available": True, "metric": "tokens"})
+    assert providers.summary("glm")["available"] is True
+    assert providers.summary("claude") is None           # local providers have no api fetcher
 
 
 def test_configio_validates_providers():

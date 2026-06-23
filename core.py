@@ -285,6 +285,12 @@ DEFAULT_CONFIG = {
         "claude": {"weekday": 150, "weekend": 150},
         "codex": {"weekday": 150, "weekend": 150},
     },
+    # which LLM vendors to track (see providers.py REGISTRY). claude + codex read
+    # local logs; api providers (glm/deepseek/…) need a key in providers.keys.
+    "providers": {
+        "enabled": ["claude", "codex"],
+        "keys": {},  # {"glm": "id.secret", "deepseek": "sk-…", …}
+    },
     "handle": "",  # your X/Twitter @handle for the share card (blank -> git user / "you")
     "xhs_id": "",  # your 小红书号 (RED ID) for the share card (blank -> hidden)
     "checkpoints": ["15:00", "20:00", "23:00"],

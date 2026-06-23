@@ -8,6 +8,10 @@
     "claude": { "weekday": 150, "weekend": 150 },
     "codex": { "weekday": 150, "weekend": 150 }
   },
+  "providers": {
+    "enabled": ["claude", "codex"],
+    "keys": {}
+  },
   "handle": "",
   "xhs_id": "",
   "checkpoints": ["15:00", "20:00", "23:00"],

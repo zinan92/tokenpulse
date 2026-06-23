@@ -135,17 +135,16 @@ web/widget.html   (Telegram 推送)  (终端状态)    (可选·自动烧额度)
 git clone https://github.com/zinan92/tokenpulse.git
 cd tokenpulse
 
-# 2. 依赖：core/cli/nudge 纯 stdlib；web widget 需要 pywebview，战绩卡/QR 需要 Pillow + qrcode
-pip3 install --user -r requirements.txt
+# 2. 一键安装：装依赖 + 首次从 config.example.json 生成 config.json + 装成 launchd 常驻
+#    （widget 开机自启 / 崩溃重拉，Telegram 定时鞭策）
+./install.sh
+#    然后在 widget 的「设置」面板填上你的 X / 小红书号（战绩卡署名）；卡片页脚的
+#    builder CTA 是作者署名，跟着每张卡走，不用你管。
 
-# 3. 终端看今日状态（最轻量，零额外依赖）
-python3 cli.py
-
-# 4. 启动桌面 goad widget（无边框置顶，可拖动）
-python3 webwidget.py
-
-# 5. (可选) 装成 launchd 常驻 + Telegram 定时鞭策
-#    见 com.tokenpulse.{widget,nudge} 两个 LaunchAgent
+# —— 或者手动跑（不装常驻）——
+pip3 install -r requirements.txt
+python3 cli.py          # 终端看今日状态（最轻量，core/cli 纯 stdlib）
+python3 webwidget.py    # 桌面 goad widget（无边框置顶，可拖动）
 ```
 
 > **CodexBar 可选**（[steipete/codexbar](https://github.com/steipete/codexbar)）：只用于 **Claude** 的 session/weekly % 那两栏。没装也能跑——token、cost、Codex 额度全部正常，Claude 额度那两栏显示 `—`。
@@ -160,7 +159,7 @@ python3 webwidget.py
 | today/30d cost + tokens + 缓存命中 | models.dev 单价**直连**，新模型家族回退 | ✅ |
 | **🐵 西游记档位 + 徽章** | 按月用量孵化 8 档（石猴→如来），多维徽章（`badges.py`） | ✅ |
 | **可分享竖版战绩卡** | 小红书 3:4、竖向天梯、SF Compact + 思源黑体、顶部 X 身份 + 页脚 builder CTA（`card.py`） | ✅ |
-| **QR 分享页原型** | 分享按钮生成 PNG + 移动分享页 QR；有 `cloudflared` 时走临时 HTTPS，否则本地/Finder 降级 | ✅ |
+| **QR 分享页** | 分享按钮生成 PNG + 移动分享页 QR；有 `cloudflared` 时走临时 HTTPS（系统分享 + `og:image` 让 X 展开卡片），否则绑 LAN（手机同 wifi 可扫开、保存图片）| ✅ |
 | **生涯累计 / 单会话峰值** | 永不裁剪的单调累加器（`lifetime.py` / `peaks.py`） | ✅ |
 | 在线时长 / 最长连续在线 | 合并双工具时间线（`history` / `continuity.py`）— 仅面板 | ✅ |
 | goad widget (web) | 暗色、drenched 状态反应、count-up、达标 flare、详情面板 + 战绩卡按钮 | ✅ |
@@ -204,13 +203,14 @@ tokenpulse/
 ├── nudge.py           # Telegram 鞭策（落后时）
 ├── furnace.py / fuel.py   # 可选：无人值守自动烧额度
 ├── cli.py             # 终端状态
-├── config.json        # 目标 / 署名 / checkpoints / 阈值 / furnace 开关
-└── tests/             # pytest（98 passing）
+├── config.example.json # 出厂模板（owner 字段留空）；install.sh 首次拷成 config.json
+├── config.json        # 你的本地实例（gitignore，不入库）：目标 / 署名 / 阈值 / furnace
+└── tests/             # pytest（99 passing）
 ```
 
 ## 配置
 
-`config.json`：
+`config.json` 由 `install.sh` 首次从 `config.example.json` 生成（owner 字段留空），**不入库**——所以克隆下来的是干净模板，署名是你自己的，不是作者的。`builder` 那块是写死的作者署名（页脚 CTA），不在这里改。字段：
 
 | 字段 | 说明 | 默认 |
 |------|------|------|

@@ -33,7 +33,7 @@ OUT_ROOT = ROOT / ".card-out" / "share"
 
 _SERVER = None
 _SERVER_ROOT: Path | None = None
-_SERVER_URL: str | None = None
+_SERVER_PORT: int | None = None
 _TUNNEL_PROC: subprocess.Popen | None = None
 _TUNNEL_URL: str | None = None
 _LOCK = threading.Lock()
@@ -74,24 +74,37 @@ class _QuietHandler(SimpleHTTPRequestHandler):
         return
 
 
-def _ensure_server(root: Path, host: str, port: int) -> str:
-    global _SERVER, _SERVER_ROOT, _SERVER_URL
+def _lan_ip() -> str | None:
+    """Best-effort LAN IP a phone on the same Wi-Fi can reach (None if offline)."""
+    try:
+        with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as s:
+            s.connect(("8.8.8.8", 80))
+            ip = s.getsockname()[0]
+    except OSError:
+        return None
+    return ip if ip and not ip.startswith("127.") else None
+
+
+def _ensure_server(root: Path, port: int) -> int:
+    """Serve `root` on ALL interfaces so a same-Wi-Fi phone (not just localhost)
+    can reach it. Returns the bound port."""
+    global _SERVER, _SERVER_ROOT, _SERVER_PORT
     root = root.resolve()
     with _LOCK:
-        if _SERVER is not None and _SERVER_ROOT == root and _SERVER_URL:
-            return _SERVER_URL
+        if _SERVER is not None and _SERVER_ROOT == root and _SERVER_PORT:
+            return _SERVER_PORT
         root.mkdir(parents=True, exist_ok=True)
         chosen = int(port or 0)
         handler = functools.partial(_QuietHandler, directory=str(root))
         try:
-            httpd = ThreadingHTTPServer((host, chosen), handler)
+            httpd = ThreadingHTTPServer(("0.0.0.0", chosen), handler)
         except OSError:
-            httpd = ThreadingHTTPServer((host, _free_port(host)), handler)
+            httpd = ThreadingHTTPServer(("0.0.0.0", _free_port("0.0.0.0")), handler)
         threading.Thread(target=httpd.serve_forever, daemon=True).start()
         _SERVER = httpd
         _SERVER_ROOT = root
-        _SERVER_URL = f"http://{host}:{httpd.server_address[1]}"
-        return _SERVER_URL
+        _SERVER_PORT = int(httpd.server_address[1])
+        return _SERVER_PORT
 
 
 def _read_tunnel(proc: subprocess.Popen):
@@ -151,10 +164,12 @@ def _cleanup_old(root: Path, ttl_hours: int | float):
             continue
 
 
-def _page_html(*, title: str, x_via: str, builder_url: str, douyin_id: str, xhs_id: str) -> str:
+def _page_html(*, title: str, x_via: str, builder_url: str, douyin_id: str, xhs_id: str,
+               card_url: str = "") -> str:
     safe_title = html.escape(title)
     safe_xhs = html.escape(xhs_id or "")
     safe_douyin = html.escape(douyin_id or "")
+    safe_card = html.escape(card_url or "card.png")
     js = {
         "title": title,
         "text": "我用 TokenPulse 生成了一张 AI token 战绩卡。",
@@ -169,6 +184,11 @@ def _page_html(*, title: str, x_via: str, builder_url: str, douyin_id: str, xhs_
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>{safe_title}</title>
+<meta property="og:title" content="{safe_title}">
+<meta property="og:description" content="我用 TokenPulse 生成了一张 AI token 战绩卡。">
+<meta property="og:image" content="{safe_card}">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:image" content="{safe_card}">
 <style>
   :root {{ color-scheme: dark; --bg:#0c1017; --ink:#f2f5f8; --muted:#8f98a5; --heat:#f9923e; --line:#252b36; }}
   * {{ box-sizing: border-box; }}
@@ -255,6 +275,23 @@ def build_share_payload(
     _copy_card(card_path, page_dir / "card.png")
     handle = (builder.get("handle") or "zinan92").lstrip("@")
     builder_url = builder.get("url") or core.DEFAULT_CONFIG["builder"]["url"]
+    port = int(share_cfg.get("port") or 8765)
+    bound_port = _ensure_server(root, port)            # listens on 0.0.0.0 (LAN-reachable)
+    loopback = f"http://127.0.0.1:{bound_port}"         # cloudflared connects here
+    lan_ip = _lan_ip()
+    lan_base = f"http://{lan_ip}:{bound_port}" if lan_ip else loopback
+
+    base_url = (os.environ.get("TOKENPULSE_SHARE_BASE_URL") or share_cfg.get("base_url") or "").rstrip("/")
+    public_base = base_url
+    mode = share_cfg.get("mode") or "cloudflared"
+    if not public_base and start_tunnel and mode == "cloudflared":
+        public_base = _ensure_tunnel(loopback) or ""
+    base = public_base or lan_base                      # https tunnel > LAN http > loopback
+    page_url = f"{base}/{sid}/"
+    https = page_url.startswith("https://")
+
+    # Write the page now the absolute card URL is known, so og:image lets X
+    # unfurl the card image (only meaningful over the public https tunnel).
     (page_dir / "index.html").write_text(
         _page_html(
             title="TokenPulse 战绩卡",
@@ -262,28 +299,18 @@ def build_share_payload(
             builder_url=builder_url,
             douyin_id=builder.get("douyin_id") or "",
             xhs_id=builder.get("xhs_id") or "",
+            card_url=f"{base}/{sid}/card.png",
         ),
         encoding="utf-8",
     )
-
-    base_url = (os.environ.get("TOKENPULSE_SHARE_BASE_URL") or share_cfg.get("base_url") or "").rstrip("/")
-    host = share_cfg.get("host") or "127.0.0.1"
-    port = int(share_cfg.get("port") or 8765)
-    local_base = _ensure_server(root, host, port)
-    local_url = f"{local_base}/{sid}/"
-    public_base = base_url
-    mode = share_cfg.get("mode") or "cloudflared"
-    if not public_base and start_tunnel and mode == "cloudflared":
-        public_base = _ensure_tunnel(local_base) or ""
-    url = f"{public_base}/{sid}/" if base_url else (f"{public_base}/{sid}/" if public_base else local_url)
-    https = url.startswith("https://")
     return {
-        "url": url,
-        "local_url": local_url,
+        "url": page_url,
+        "local_url": f"{lan_base}/{sid}/",
         "https": https,
-        "qr": qr_data_uri(url),
+        "qr": qr_data_uri(page_url),
         "share_id": sid,
         "page_dir": str(page_dir),
         "card": str(page_dir / "card.png"),
+        "reachable": "https" if https else ("lan" if lan_ip else "local"),
         "mode": "https" if https else "local",
     }

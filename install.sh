@@ -14,6 +14,16 @@ mkdir -p "$LA"
 echo "TokenPulse dir : $DIR"
 echo "python3        : $PY"
 
+# ---- python deps + first-run config ----------------------------------------
+echo "installing deps (pywebview / Pillow / qrcode) ..."
+"$PY" -m pip install -q -r "$DIR/requirements.txt" \
+  || echo "⚠ pip install failed — run manually: $PY -m pip install -r \"$DIR/requirements.txt\""
+# first run: seed an editable config from the shipped template (owner fields blank)
+if [ ! -f "$DIR/config.json" ]; then
+  cp "$DIR/config.example.json" "$DIR/config.json"
+  echo "created config.json — set your X / 小红书号 in the widget's 设置 panel"
+fi
+
 # ---- widget agent (keep-alive) --------------------------------------------
 cat > "$LA/com.tokenpulse.widget.plist" <<PLIST
 <?xml version="1.0" encoding="UTF-8"?>
@@ -22,7 +32,7 @@ cat > "$LA/com.tokenpulse.widget.plist" <<PLIST
 <dict>
   <key>Label</key><string>com.tokenpulse.widget</string>
   <key>ProgramArguments</key>
-    <array><string>$PY</string><string>$DIR/widget.py</string></array>
+    <array><string>$PY</string><string>$DIR/webwidget.py</string></array>
   <key>WorkingDirectory</key><string>$DIR</string>
   <key>RunAtLoad</key><true/>
   <key>KeepAlive</key><true/>

@@ -62,3 +62,22 @@ def test_unreachable_is_graceful(monkeypatch):
     monkeypatch.setattr(providers_api, "_get", boom)
     out = providers_api.glm_summary(config={})
     assert out["available"] is False and out["reason"] == "unreachable"
+
+
+def test_enabled_statuses_only_api_and_caches(monkeypatch):
+    monkeypatch.setattr(providers_api, "_CACHE", {})
+    monkeypatch.setattr(providers, "enabled_ids", lambda config=None: ["claude", "glm", "deepseek"])
+    calls = {"n": 0}
+
+    def fake_summary(pid, now=None, config=None):
+        calls["n"] += 1
+        return {"available": True, "metric": providers.metric(pid), "display": {"x": pid}}
+
+    monkeypatch.setattr(providers, "summary", fake_summary)
+    st = providers_api.enabled_statuses({})
+    ids = [s["id"] for s in st]
+    assert ids == ["glm", "deepseek"]            # claude (local) excluded
+    assert st[0]["metric"] == "tokens" and st[1]["metric"] == "credits"
+    n1 = calls["n"]
+    providers_api.enabled_statuses({})           # second call served from cache
+    assert calls["n"] == n1

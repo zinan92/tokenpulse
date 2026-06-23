@@ -264,6 +264,11 @@
     transition: width 0.6s var(--ease); }
   .egg-records { font-size: 10.5px; color: var(--ink-faint); margin-top: 7px; display: flex; flex-wrap: wrap; gap: 6px 12px; }
   .egg-records b { color: var(--ink-dim); font-weight: 700; }
+  .prov-status { display: flex; flex-direction: column; gap: 3px; margin-top: 7px; }
+  .prov-status .pr { font-size: 10.5px; color: var(--ink-faint); display: flex; gap: 6px; align-items: baseline; }
+  .prov-status .pr b { color: var(--ink-dim); font-weight: 700; }
+  .prov-status .pr .nm { color: var(--ink-dim); min-width: 64px; }
+  .prov-status .pr.off { opacity: 0.6; }
 
   @media (prefers-reduced-motion: reduce) {
     * { animation: none !important; transition-duration: 0.01ms !important; }
@@ -324,6 +329,7 @@
         </div>
         <div class="egg-prog"><div class="egg-prog-f" id="egg-prog-f"></div></div>
         <div class="egg-records" id="egg-records"></div>
+        <div class="prov-status" id="prov-status"></div>
       </div>
       <div class="share-box" id="share-box" hidden>
         <div class="share-top">
@@ -520,6 +526,30 @@
       const lr = (b.longest_run && b.longest_run.longest_hours >= 1)
         ? `🏃 连续在线 <b>${Math.round(b.longest_run.longest_hours)}h</b>` : "";
       $("egg-records").innerHTML = [lf, ps, ch, lr, rec].filter(Boolean).map(s => `<span>${s}</span>`).join("");
+    } catch (e) {}
+    loadProviderStatuses();
+  }
+  function _provLine(p) {
+    const d = p.display || {};
+    if (!p.available) {
+      const why = p.reason === "no-key" ? "未配置 key" : (p.reason || "不可用");
+      return `<span class="nm">${p.label}</span><span>${why}</span>`;
+    }
+    if (p.metric === "tokens") {
+      const pct = d.limit ? ` <b>${d.percent}%</b>` : "";
+      return `<span class="nm">${p.label}</span><span>${tok(d.used || 0)}/${tok(d.limit || 0)}${pct} · ${d.window || ""}</span>`;
+    }
+    if (p.metric === "credits") return `<span class="nm">${p.label}</span><span>余额 <b>${d.total ?? "?"}</b> ${d.currency || ""}</span>`;
+    if (p.metric === "requests") return `<span class="nm">${p.label}</span><span>剩 <b>${d.remaining ?? "?"}</b>/${d.total ?? "?"} 次</span>`;
+    return `<span class="nm">${p.label}</span><span>已连</span>`;
+  }
+  async function loadProviderStatuses() {
+    try {
+      const d = JSON.parse(await window.pywebview.api.provider_statuses());
+      const box = $("prov-status");
+      if (!d || d.error || !d.providers || !d.providers.length) { box.innerHTML = ""; return; }
+      box.innerHTML = d.providers.map(p =>
+        `<div class="pr${p.available ? "" : " off"}">${_provLine(p)}</div>`).join("");
     } catch (e) {}
   }
   async function shareCard() {

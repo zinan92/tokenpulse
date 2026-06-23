@@ -9,6 +9,7 @@ metric-gated out of the token headline upstream. stdlib only.
 from __future__ import annotations
 
 import json
+import time
 import urllib.error
 import urllib.request
 from datetime import datetime, timezone
@@ -16,6 +17,8 @@ from datetime import datetime, timezone
 import providers
 
 TIMEOUT = 8
+_CACHE: dict = {}
+CACHE_TTL = 300  # live API calls are slow; cache each provider's status ~5 min
 
 
 def _empty(metric: str = "tokens", reason: str = "no-key") -> dict:
@@ -129,6 +132,37 @@ def minimax_summary(now=None, config=None) -> dict:
     out["display"] = {"remaining": rem, "total": tot,
                       "percent": round((tot - rem) / tot * 100, 1) if tot else 0.0,
                       "raw_models": len(rows)}
+    return out
+
+
+# ------------------------------------------------------ cached status surface
+
+def cached_summary(pid: str, config=None, ttl: int = CACHE_TTL) -> dict | None:
+    hit = _CACHE.get(pid)
+    if hit and (time.time() - hit[0]) < ttl:
+        return hit[1]
+    s = providers.summary(pid, config=config)
+    if s is not None:
+        _CACHE[pid] = (time.time(), s)
+    return s
+
+
+def enabled_statuses(config=None) -> list[dict]:
+    """Live (cached) status of every ENABLED api provider — for the widget panel.
+    Local providers (claude/codex) are excluded; they're the token engine."""
+    import core
+    config = config or core.load_config()
+    out = []
+    for pid in providers.enabled_ids(config):
+        if not providers.is_api(pid):
+            continue
+        s = cached_summary(pid, config)
+        if s is None:
+            continue
+        out.append({"id": pid, "label": providers.label(pid), "metric": providers.metric(pid),
+                    "metric_label": providers.metric_label(pid),
+                    "available": s.get("available"), "reason": s.get("reason"),
+                    "display": s.get("display", {})})
     return out
 
 

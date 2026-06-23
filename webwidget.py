@@ -144,6 +144,14 @@ class Api:
         except Exception as exc:  # noqa: BLE001
             return json.dumps({"available": False, "reason": str(exc)})
 
+    def provider_statuses(self) -> str:
+        """Cached live status of every enabled api provider — for the panel."""
+        try:
+            import providers_api
+            return json.dumps({"providers": providers_api.enabled_statuses(core.load_config())}, default=str)
+        except Exception as exc:  # noqa: BLE001
+            return json.dumps({"error": str(exc)})
+
     def fit(self, height) -> bool:
         """Resize the window to the content height the UI measured — so nothing
         (e.g. the '$2,690' cost number) ever gets clipped by a fixed height."""

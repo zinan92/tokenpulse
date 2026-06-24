@@ -1,0 +1,240 @@
+"""Tests for the pywebview host safety shims."""
+import json
+import os
+import sys
+
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+import webwidget  # noqa: E402
+
+
+def test_clamp_window_position_keeps_widget_on_primary_screen():
+    assert webwidget._clamp_window_position(2200, 48, screen_size=(2560, 1440)) == (2200, 48)
+    assert webwidget._clamp_window_position(9999, 9999, screen_size=(2560, 1440)) == (
+        2560 - webwidget.WIDTH,
+        1440 - webwidget.HEIGHT,
+    )
+    assert webwidget._clamp_window_position(-20, -10, screen_size=(2560, 1440)) == (0, 0)
+
+
+def test_cocoa_screen_guard_skips_move_event_without_screen():
+    calls = []
+
+    class FakeScreen:
+        pass
+
+    class FakeWindow:
+        def __init__(self, screen):
+            self._screen = screen
+
+        def screen(self):
+            return self._screen
+
+    class FakeNotification:
+        def object(self):
+            return object()
+
+    class FakeDelegate:
+        def windowDidMove_(self, notification):
+            calls.append("original")
+
+    class FakeBrowserView:
+        WindowDelegate = FakeDelegate
+        instance = None
+
+        @classmethod
+        def get_instance(cls, _kind, _window):
+            return cls.instance
+
+    class FakeCocoa:
+        BrowserView = FakeBrowserView
+
+    class FakeInstance:
+        def __init__(self, screen):
+            self.window = FakeWindow(screen)
+
+    webwidget._patch_pywebview_cocoa_screen_guard(FakeCocoa)
+    delegate = FakeDelegate()
+
+    FakeBrowserView.instance = FakeInstance(None)
+    assert delegate.windowDidMove_(FakeNotification()) is None
+    assert calls == []
+
+    FakeBrowserView.instance = FakeInstance(FakeScreen())
+    delegate.windowDidMove_(FakeNotification())
+    assert calls == ["original"]
+
+
+def test_share_card_record_routes_to_record_renderer(monkeypatch, tmp_path):
+    api = webwidget.Api()
+    out = tmp_path / "record.png"
+    captured = {}
+
+    def fake_record_card(date_str=""):
+        captured["date_str"] = date_str
+        out.write_bytes(b"record")
+        return str(out)
+
+    def fake_share_payload(path, config=None, **kwargs):
+        captured["path"] = path
+        captured["kwargs"] = kwargs
+        return {
+            "url": "http://127.0.0.1/share/",
+            "https": False,
+            "qr": "data:image/png;base64,x",
+            "share_id": "id",
+            "page_dir": str(tmp_path),
+            "card": str(out),
+            "title": kwargs.get("title"),
+            "filename": kwargs.get("filename"),
+            "reachable": "local",
+            "mode": "local",
+        }
+
+    monkeypatch.setattr(webwidget.card, "make_record_card", fake_record_card)
+    monkeypatch.setattr(webwidget.card, "make_card", lambda **_: (_ for _ in ()).throw(AssertionError("monthly card used")))
+    monkeypatch.setattr(webwidget.core, "load_config", lambda: {"share": {"mode": "local"}})
+    monkeypatch.setattr(webwidget.share, "build_share_payload", fake_share_payload)
+
+    result = json.loads(api.share_card("record"))
+
+    assert result["ok"] is True
+    assert result["kind"] == "record"
+    assert result["path"] == str(out)
+    assert captured["path"] == str(out)
+    assert captured["kwargs"]["title"] == "TokenPulse 单日纪录卡"
+    assert captured["kwargs"]["filename"] == "tokenpulse-record-card.png"
+
+
+def test_ranking_top_merges_top_and_me(monkeypatch):
+    import ranking
+    monkeypatch.setattr(webwidget.core, "load_config",
+                        lambda: {"handle": "burner", "ranking": {"enabled": True, "url": "https://r.dev"}})
+    monkeypatch.setattr(ranking, "top", lambda n=10, config=None: {"rows": [{"handle": "burner"}], "total": 1})
+    monkeypatch.setattr(ranking, "me", lambda h, config=None: {"found": True, "handle": h, "rank": 1})
+
+    api = webwidget.Api()
+    out = json.loads(api.ranking_top())
+
+    assert out["handle"] == "burner"
+    assert out["me"]["rank"] == 1
+    assert out["top"]["total"] == 1
+
+
+def test_ranking_top_uses_ttl_cache(monkeypatch):
+    import ranking
+    calls = {"top": 0}
+    monkeypatch.setattr(webwidget.core, "load_config",
+                        lambda: {"handle": "burner", "ranking": {"enabled": True, "url": "https://r.dev"}})
+
+    def counting_top(n=10, config=None):
+        calls["top"] += 1
+        return {"rows": [], "total": 0}
+
+    monkeypatch.setattr(ranking, "top", counting_top)
+    monkeypatch.setattr(ranking, "me", lambda h, config=None: {"found": False})
+
+    api = webwidget.Api()
+    api.ranking_top()
+    api.ranking_top()  # second call must be served from the 5-min cache
+
+    assert calls["top"] == 1
+
+
+def test_share_card_monthly_default_route(monkeypatch, tmp_path):
+    """The default (monthly) path — what celebrateHatch auto-fires and the share
+    button uses — must render the monthly card with no record-only copy."""
+    api = webwidget.Api()
+    out = tmp_path / "monthly.png"
+    captured = {}
+
+    def fake_make_card(date_str=""):
+        captured["date_str"] = date_str
+        out.write_bytes(b"monthly")
+        return str(out)
+
+    def fake_share_payload(path, config=None, **kwargs):
+        captured["path"] = path
+        captured["kwargs"] = kwargs
+        return {"url": "http://127.0.0.1/share/", "https": False, "qr": "x",
+                "share_id": "id", "page_dir": str(tmp_path), "card": str(out),
+                "reachable": "local", "mode": "local"}
+
+    monkeypatch.setattr(webwidget.card, "make_card", fake_make_card)
+    monkeypatch.setattr(webwidget.card, "make_record_card",
+                        lambda **_: (_ for _ in ()).throw(AssertionError("record card used")))
+    monkeypatch.setattr(webwidget.core, "load_config", lambda: {"share": {"mode": "local"}})
+    monkeypatch.setattr(webwidget.share, "build_share_payload", fake_share_payload)
+
+    result = json.loads(api.share_card())  # default kind == monthly
+
+    assert result["ok"] is True
+    assert result["kind"] == "monthly"
+    assert result["path"] == str(out)
+    assert captured["date_str"]  # today's date threaded through
+    # monthly path must NOT pass the record-only copy kwargs
+    assert "title" not in captured["kwargs"] and "filename" not in captured["kwargs"]
+
+
+def test_ranking_top_survives_unreachable_server(monkeypatch):
+    """When the ranking server is down, ranking.top/me return None — ranking_top
+    must still return valid JSON (no error) so the UI just hides the rank line."""
+    import ranking
+    monkeypatch.setattr(webwidget.core, "load_config",
+                        lambda: {"handle": "burner", "ranking": {"enabled": True, "url": "https://r.dev"}})
+    monkeypatch.setattr(ranking, "top", lambda n=10, config=None: None)
+    monkeypatch.setattr(ranking, "me", lambda h, config=None: None)
+
+    out = json.loads(webwidget.Api().ranking_top())
+
+    assert "error" not in out
+    assert out["top"] is None and out["me"] is None
+
+
+# ── _submit_ranking helper (the warm-loop ranking push) ──
+
+def _patch_badges(monkeypatch, data):
+    import badges
+    monkeypatch.setattr(badges, "card_data", lambda *a, **k: data)
+
+
+def test_submit_ranking_disabled_returns_none(monkeypatch):
+    import ranking
+    monkeypatch.setattr(ranking, "submit", lambda *a, **k: (_ for _ in ()).throw(AssertionError("submitted")))
+    assert webwidget._submit_ranking({"ranking": {"enabled": False, "url": "https://r.dev"}}) is None
+
+
+def test_submit_ranking_no_url_returns_none(monkeypatch):
+    import ranking
+    monkeypatch.setattr(ranking, "submit", lambda *a, **k: (_ for _ in ()).throw(AssertionError("submitted")))
+    assert webwidget._submit_ranking({"ranking": {"enabled": True, "url": ""}}) is None
+
+
+def test_submit_ranking_enabled_pushes_burn(monkeypatch):
+    import ranking
+    captured = {}
+    _patch_badges(monkeypatch, {"monthly_tokens": 5_000_000, "lifetime": {"lifetime_tokens": 9_000_000}})
+    monkeypatch.setattr(ranking, "submit", lambda tokens_30d, tokens_lifetime, config=None: captured.update(
+        t30=tokens_30d, tlt=tokens_lifetime) or {"ok": True, "rank": 1})
+    res = webwidget._submit_ranking({"ranking": {"enabled": True, "url": "https://r.dev"}})
+    assert res == {"ok": True, "rank": 1}
+    assert captured == {"t30": 5_000_000, "tlt": 9_000_000}
+
+
+def test_submit_ranking_tolerates_missing_badge_keys(monkeypatch):
+    import ranking
+    captured = {}
+    _patch_badges(monkeypatch, {})  # no monthly_tokens, no lifetime
+    monkeypatch.setattr(ranking, "submit", lambda tokens_30d, tokens_lifetime, config=None: captured.update(
+        t30=tokens_30d, tlt=tokens_lifetime) or {"ok": True})
+    webwidget._submit_ranking({"ranking": {"enabled": True, "url": "https://r.dev"}})
+    assert captured == {"t30": 0, "tlt": 0}  # submits zeros, never crashes
+
+
+def test_submit_ranking_tolerates_malformed_lifetime(monkeypatch):
+    import ranking
+    captured = {}
+    _patch_badges(monkeypatch, {"monthly_tokens": 7, "lifetime": "oops-not-a-dict"})
+    monkeypatch.setattr(ranking, "submit", lambda tokens_30d, tokens_lifetime, config=None: captured.update(
+        t30=tokens_30d, tlt=tokens_lifetime) or {"ok": True})
+    webwidget._submit_ranking({"ranking": {"enabled": True, "url": "https://r.dev"}})
+    assert captured == {"t30": 7, "tlt": 0}  # malformed lifetime -> 0, no AttributeError

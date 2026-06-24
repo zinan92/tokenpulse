@@ -264,6 +264,58 @@
     transition: width 0.6s var(--ease); }
   .egg-records { font-size: 10.5px; color: var(--ink-faint); margin-top: 7px; display: flex; flex-wrap: wrap; gap: 6px 12px; }
   .egg-records b { color: var(--ink-dim); font-weight: 700; }
+  /* M4 incubation: the egg reacts to today's feeding (burn%) + droops on a broken streak */
+  .eggsec .egg-emo { transition: filter 0.4s var(--ease), transform 0.4s var(--ease); }
+  .eggsec[data-hunger="starving"]  .egg-emo { filter: grayscale(0.55) brightness(0.72); animation: egg-shiver 2.6s ease-in-out infinite; }
+  .eggsec[data-hunger="eating"]    .egg-emo { animation: egg-bob 2.8s ease-in-out infinite; }
+  .eggsec[data-hunger="full"]      .egg-emo { animation: egg-bob 2.2s ease-in-out infinite; filter: drop-shadow(0 0 12px var(--heat-soft)); }
+  .eggsec[data-hunger="satisfied"] .egg-emo { animation: egg-bob 1.8s ease-in-out infinite; filter: drop-shadow(0 0 16px var(--heat)); }
+  .eggsec[data-drooped="1"] .egg-emo { filter: grayscale(0.7) brightness(0.62); transform: rotate(-7deg) translateY(2px); animation: none; }
+  @keyframes egg-shiver { 0%,100%{transform:translateX(0) rotate(0)} 25%{transform:translateX(-1.5px) rotate(-3deg)} 75%{transform:translateX(1.5px) rotate(3deg)} }
+  @keyframes egg-bob { 0%,100%{transform:translateY(0)} 50%{transform:translateY(-3px)} }
+  /* M4② break-shell celebration on a tier-up (升档破壳) */
+  .eggsec { position: relative; }
+  .eggsec.celebrating .egg-emo { animation: egg-crack 1.5s var(--ease); }
+  @keyframes egg-crack {
+    0%   { transform: scale(1) rotate(0); }
+    12%  { transform: scale(1.10) rotate(-6deg); }
+    24%  { transform: scale(0.92) rotate(8deg); }
+    36%  { transform: scale(1.18) rotate(-10deg); }
+    50%  { transform: scale(0.85) rotate(6deg);  filter: drop-shadow(0 0 22px var(--heat)); }
+    68%  { transform: scale(1.55) rotate(-3deg); filter: drop-shadow(0 0 30px var(--heat)); }
+    100% { transform: scale(1) rotate(0); }
+  }
+  .hatch-burst { position: absolute; inset: -6px -6px auto -6px; z-index: 5; pointer-events: none;
+    display: flex; align-items: center; gap: 7px; padding: 9px 12px; border-radius: 10px;
+    background: radial-gradient(130% 150% at 16% 50%, var(--heat) 0%,
+      color-mix(in oklch, var(--heat) 38%, transparent) 46%, transparent 76%);
+    color: #1a1100; font-weight: 800; font-size: 13px; letter-spacing: 0.02em; white-space: nowrap;
+    transform-origin: 16% 50%; animation: hatch-burst-in 2.2s var(--ease) forwards; }
+  .hatch-burst b { font-weight: 900; }
+  @keyframes hatch-burst-in {
+    0%   { opacity: 0; transform: scale(0.6) translateY(6px); }
+    14%  { opacity: 1; transform: scale(1.05) translateY(0); }
+    80%  { opacity: 1; transform: scale(1); }
+    100% { opacity: 0; transform: scale(1.02) translateY(-4px); }
+  }
+  .hatch-particle { position: absolute; z-index: 6; pointer-events: none; font-size: 15px;
+    left: 22px; top: 26px; will-change: transform, opacity; animation: hatch-fly 1.3s var(--ease) forwards; }
+  @keyframes hatch-fly {
+    0%   { opacity: 0; transform: translate(0,0) scale(0.4); }
+    18%  { opacity: 1; }
+    100% { opacity: 0; transform: translate(var(--dx), var(--dy)) scale(1.1) rotate(var(--rot)); }
+  }
+  .egg-hunger { font-size: 10.5px; margin-top: 6px; font-weight: 700; color: var(--ink-faint); display: flex; align-items: center; gap: 5px; }
+  .egg-hunger b { color: var(--heat); font-weight: 700; }
+  .eggsec[data-hunger="satisfied"] .egg-hunger { color: var(--heat); }
+  .eggsec[data-drooped="1"] .egg-hunger { color: var(--alarm); }
+  .record-share { appearance: none; border: 0; padding: 0; margin: 0; background: none; color: var(--ink-faint);
+    font: inherit; cursor: pointer; display: inline-flex; gap: 3px; align-items: baseline; }
+  .record-share:hover { color: var(--heat); }
+  .record-share .go { color: var(--heat); font-weight: 700; }
+  .rank-line { margin-top: 7px; font-size: 10.5px; color: var(--ink-faint); display: flex; gap: 6px; align-items: baseline; }
+  .rank-line b { color: var(--heat); font-weight: 700; }
+  .rank-line .nm { color: var(--ink-dim); min-width: 64px; }
   .prov-status { display: flex; flex-direction: column; gap: 3px; margin-top: 7px; }
   .prov-status .pr { font-size: 10.5px; color: var(--ink-faint); display: flex; gap: 6px; align-items: baseline; }
   .prov-status .pr b { color: var(--ink-dim); font-weight: 700; }
@@ -323,7 +375,7 @@
     </div>
 
     <div class="panel" id="panel" hidden>
-      <div class="psec eggsec">
+      <div class="psec eggsec" id="eggsec" data-drooped="0">
         <div class="eggrow">
           <span class="egg-emo" id="egg-emo">🥚</span>
           <div class="egg-txt">
@@ -333,7 +385,9 @@
           <button id="share-btn" class="share-btn">分享战绩卡 ↗</button>
         </div>
         <div class="egg-prog"><div class="egg-prog-f" id="egg-prog-f"></div></div>
+        <div class="egg-hunger" id="egg-hunger" hidden></div>
         <div class="egg-records" id="egg-records"></div>
+        <div class="rank-line" id="rank-line" hidden></div>
         <div class="prov-status" id="prov-status"></div>
         <div class="moment" id="moment" hidden></div>
       </div>
@@ -422,6 +476,24 @@
     return (GOADS[c.state] || GOADS.ontrack)(c);
   }
 
+  // M4 incubation: today's burn% is the egg's feeding level. Drives how it moves.
+  function eggHunger(c) {
+    const pct = Math.max(0, Math.min(120, c.percent || 0));
+    if (c.hit || pct >= 100) return { k: "satisfied", label: "🍚 今天喂饱了 ✓ 继续加餐冲下一档" };
+    if (pct >= 60) return { k: "full",     label: `🍚 快饱了 <b>${pct.toFixed(0)}%</b>，再喂一口就达标` };
+    if (pct >= 20) return { k: "eating",   label: `🍙 进食中 <b>${pct.toFixed(0)}%</b>，别停` };
+    return { k: "starving", label: pct > 0 ? `🍙 还饿着 <b>${pct.toFixed(0)}%</b>，喂它` : "🍙 饿扁了，开烧喂我" };
+  }
+  let _lastCombined = null;  // so paintEggDroop can restore the hunger label on recovery
+  function paintEggHunger(c) {
+    const eggsec = $("eggsec"); if (!eggsec) return;
+    _lastCombined = c;
+    const h = eggHunger(c);
+    if (eggsec.dataset.drooped !== "1") eggsec.dataset.hunger = h.k;  // droop owns the look until recovered
+    const hb = $("egg-hunger");
+    if (hb && eggsec.dataset.drooped !== "1") { hb.innerHTML = h.label; hb.hidden = false; }
+  }
+
   let _lastState = null;
   function renderCore(d) {
     if (!d) return;
@@ -433,6 +505,7 @@
     $("c-fill").style.width = clamp(c.today / c.target * 100, 0, 100) + "%";
     $("c-pace").style.left = clamp(c.expected / c.target * 100, 0, 100) + "%";
     $("goad").innerHTML = goadFor(c);
+    paintEggHunger(c);
 
     for (const t of ["claude", "codex"]) {
       const x = d.tools[t];
@@ -500,6 +573,27 @@
       `<span><b>达标</b> ${p.hit_days}/${p.total_days} 天</span>` +
       `<span><b>日均</b> ${tok(p.avg)}</span>` +
       (p.best ? `<span><b>最高</b> ${tok(p.best.total)} (${p.best.date.slice(5)})</span>` : "");
+    paintEggDroop(p, tgt);
+  }
+  // M4: the egg droops if YESTERDAY (last settled day) missed target and today hasn't
+  // recovered it yet — loss aversion pulls you back. Streak alone can't tell us this
+  // (it resets to 0 every morning), so we read the series directly.
+  function paintEggDroop(p, tgt) {
+    const eggsec = $("eggsec"); if (!eggsec || !p.series || p.series.length < 2 || !tgt) return;
+    const s = p.series, today = s[s.length - 1], yest = s[s.length - 2];
+    const todayHit = today && today.total >= tgt;
+    const yestMissed = yest && yest.total < tgt;
+    const hasHistory = s.some(r => r.total > 0);
+    const drooped = !!(yestMissed && !todayHit && hasHistory);
+    const was = eggsec.dataset.drooped;
+    eggsec.dataset.drooped = drooped ? "1" : "0";
+    const hb = $("egg-hunger");
+    if (drooped && hb) {
+      hb.innerHTML = "😴 昨天断顿了，今天别再让它饿着 — 喂回连击";
+      hb.hidden = false;
+    } else if (!drooped && was === "1" && _lastCombined) {
+      paintEggHunger(_lastCombined);  // recovered — restore the live hunger label, don't leave the droop text
+    }
   }
   async function loadPanel() {
     loadConfig();   // keep the settings inputs in sync whenever the panel loads
@@ -507,6 +601,37 @@
     try { renderPanel(JSON.parse(await window.pywebview.api.panel())); }
     catch (e) {}
     setTimeout(fitWindow, 40);
+  }
+
+  // M4②: the egg cracks open into its next 西游记 form, then auto-pops the share card.
+  // Fires once per real tier-up (moments.check is idempotent server-side).
+  function celebrateHatch(title) {
+    const eggsec = $("eggsec"); if (!eggsec) return;
+    const fr = $("frame");
+    if (fr) { fr.classList.remove("flare"); void fr.offsetWidth; fr.classList.add("flare"); }
+    eggsec.classList.remove("celebrating"); void eggsec.offsetWidth; eggsec.classList.add("celebrating");
+    const burst = document.createElement("div");
+    burst.className = "hatch-burst";
+    burst.innerHTML = `🥚→🐣 破壳！<b>${title}</b>`;
+    eggsec.appendChild(burst);
+    const emojis = ["✨", "🔥", "⭐", "💥", "🎉"];
+    for (let i = 0; i < 9; i++) {
+      const p = document.createElement("span");
+      p.className = "hatch-particle";
+      p.textContent = emojis[i % emojis.length];
+      const ang = (Math.PI * 2 * i) / 9 + Math.random() * 0.5;
+      const dist = 50 + Math.random() * 40;
+      p.style.setProperty("--dx", (Math.cos(ang) * dist).toFixed(1) + "px");
+      p.style.setProperty("--dy", (Math.sin(ang) * dist - 10).toFixed(1) + "px");
+      p.style.setProperty("--rot", (Math.random() * 360 - 180).toFixed(0) + "deg");
+      eggsec.appendChild(p);
+    }
+    setTimeout(() => {
+      burst.remove();
+      eggsec.querySelectorAll(".hatch-particle").forEach(n => n.remove());
+      eggsec.classList.remove("celebrating");
+    }, 2400);
+    setTimeout(() => { try { shareCard("monthly"); } catch (e) {} }, 1500);  // auto-pop the 战绩卡
   }
 
   // ── egg tier + share ──
@@ -524,7 +649,9 @@
       $("egg-prog-f").style.width = Math.round((b.tier.progress_to_next ?? 1) * 100) + "%";
       const lf = (b.lifetime && b.lifetime.lifetime_tokens)
         ? `♾️ 生涯 <b>${tok(b.lifetime.lifetime_tokens)}</b>` : "";
-      const rec = b.record_day ? `💥 最高日 <b>${tok(b.record_day.total)}</b>` : "";
+      const rec = b.record_day
+        ? `<button id="record-share" class="record-share" type="button" title="生成单日纪录卡">💥 最高日 <b>${tok(b.record_day.total)}</b>${b.record_day.date ? ` (${b.record_day.date.slice(5)})` : ""}<span class="go">晒</span></button>`
+        : "";
       const ps = (b.peak_session && b.peak_session.total)
         ? `🌪️ 单会话 <b>${tok(b.peak_session.total)}</b>` : "";
       const ch = (b.cache_hit_rate >= 0.6)
@@ -532,14 +659,23 @@
       const lr = (b.longest_run && b.longest_run.longest_hours >= 1)
         ? `🏃 连续在线 <b>${Math.round(b.longest_run.longest_hours)}h</b>` : "";
       $("egg-records").innerHTML = [lf, ps, ch, lr, rec].filter(Boolean).map(s => `<span>${s}</span>`).join("");
+      const recBtn = $("record-share");
+      if (recBtn) {
+        recBtn.addEventListener("mousedown", e => e.stopPropagation());
+        recBtn.addEventListener("click", e => { e.stopPropagation(); shareCard("record"); });
+      }
       const moment = $("moment");
       if (b.moments && b.moments.length) {
         moment.innerHTML = `🎉 ${b.moments[0].title}！<span class="go">晒一下 →</span>`;
         moment.hidden = false;
-        moment.onclick = () => shareCard();
+        moment.onclick = () => shareCard(b.moments[0].kind === "record" ? "record" : "monthly");
+        // M4②: a tier-up hatches the egg into its next 西游记 form — full celebration + auto-share.
+        const tierMoment = b.moments.find(m => m.kind === "tier");
+        if (tierMoment) celebrateHatch(tierMoment.title);
       } else { moment.hidden = true; }
     } catch (e) {}
     loadProviderStatuses();
+    loadRanking();
   }
   function _provLine(p) {
     const d = p.display || {};
@@ -564,21 +700,51 @@
         `<div class="pr${p.available ? "" : " off"}">${_provLine(p)}</div>`).join("");
     } catch (e) {}
   }
-  async function shareCard() {
-    const btn = $("share-btn"), orig = "分享战绩卡 ↗";
-    btn.textContent = "生成中…"; btn.disabled = true;
+  // ── global rank (shown only once the ranking server is configured) ──
+  // Honesty rule (README 排名诚实): a real "Top X%" only means something with a
+  // real pool (≥200). Below that we show 创始操作者/创始梯队 framing — never a
+  // global percentile that implies scale we don't have yet.
+  const RANK_POOL_MIN = 200;
+  async function loadRanking() {
+    const box = $("rank-line");
+    if (!box || !(window.pywebview && window.pywebview.api && window.pywebview.api.ranking_top)) { return; }
     try {
-      const r = JSON.parse(await window.pywebview.api.share_card());
+      const d = JSON.parse(await window.pywebview.api.ranking_top());
+      const me = d && d.me, total = (d && d.top && d.top.total) || 0;
+      if (!me || !me.found || me.rank == null) { box.hidden = true; return; }
+      const burn = `30d <b>${tok(me.tokens_30d || 0)}</b>`;
+      let label;
+      if (total >= RANK_POOL_MIN) {
+        const pct = Math.max(1, Math.round(me.rank / total * 100));
+        label = `<span class="nm">全球烧量榜</span><span>第 <b>${me.rank}</b> / ${total} 名 · Top <b>${pct}%</b> · ${burn}</span>`;
+      } else if (me.rank === 1) {
+        label = `<span class="nm">创始操作者</span><span><b>#1</b> · ${burn}</span>`;
+      } else {
+        label = `<span class="nm">创始梯队</span><span><b>#${me.rank}</b> / ${total} · ${burn}</span>`;
+      }
+      box.innerHTML = label;
+      box.hidden = false;
+    } catch (e) { console.error("loadRanking failed:", e); box.hidden = true; }
+  }
+  async function shareCard(kind = "monthly") {
+    const btn = $("share-btn"), orig = "分享战绩卡 ↗";
+    const requested = kind === "record" ? "record" : "monthly";
+    btn.textContent = requested === "record" ? "生成单日卡…" : "生成中…"; btn.disabled = true;
+    try {
+      const r = JSON.parse(await window.pywebview.api.share_card(requested));
       if (r.ok) {
+        const label = (r.kind === "record") ? "单日纪录卡" : "战绩卡";
         window._sharePayload = r;
         $("share-box").hidden = false;
         $("share-qr").src = r.qr || "";
         $("share-url").textContent = r.url || r.path || "";
-        $("share-title").textContent = r.https ? "扫码分享战绩卡" : "本地分享页已生成";
+        $("share-title").textContent = r.https ? `扫码分享${label}` : `${label}本地页已生成`;
         $("share-note").textContent = r.https
-          ? "手机扫码打开 HTTPS 分享页，可分享图片或保存后发布。"
+          ? `手机扫码打开 HTTPS 分享页，可分享${label}或保存后发布。`
           : "未拿到 HTTPS tunnel；可在本机打开页面，或从 Finder 手动分享 PNG。";
-        btn.textContent = r.https ? "二维码已生成 ✓" : "本地页已生成 ✓";
+        btn.textContent = r.https
+          ? (r.kind === "record" ? "单日卡二维码 ✓" : "二维码已生成 ✓")
+          : (r.kind === "record" ? "单日卡已生成 ✓" : "本地页已生成 ✓");
         setTimeout(fitWindow, 40);
       } else {
         btn.textContent = "失败";
@@ -704,12 +870,12 @@
     $("share-open").addEventListener("click", e => {
       e.stopPropagation();
       const p = window._sharePayload || {};
-      if (p.url) window.pywebview.api.open_url(p.url);
+      if (p.url && window.pywebview && window.pywebview.api) window.pywebview.api.open_url(p.url);
     });
     $("share-reveal").addEventListener("click", e => {
       e.stopPropagation();
       const p = window._sharePayload || {};
-      if (p.path) window.pywebview.api.reveal_path(p.path);
+      if (p.path && window.pywebview && window.pywebview.api) window.pywebview.api.reveal_path(p.path);
     });
     loadConfig();   // populate the settings inputs up front (cheap, not gated on the panel scan)
     tick();

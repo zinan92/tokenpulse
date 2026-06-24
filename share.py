@@ -74,15 +74,59 @@ class _QuietHandler(SimpleHTTPRequestHandler):
         return
 
 
-def _lan_ip() -> str | None:
-    """Best-effort LAN IP a phone on the same Wi-Fi can reach (None if offline)."""
+def _is_private_lan(ip: str | None) -> bool:
+    """True only for RFC1918 ranges a same-Wi-Fi phone can actually reach —
+    excludes loopback, link-local, CGNAT (100.64/10), and the 198.18/15
+    benchmark range that Clash/Surge fake-ip TUNs hand out (198.18.0.1)."""
+    if not ip:
+        return False
+    if ip.startswith("192.168.") or ip.startswith("10."):
+        return True
+    if ip.startswith("172."):
+        try:
+            return 16 <= int(ip.split(".")[1]) <= 31
+        except (IndexError, ValueError):
+            return False
+    return False
+
+
+def _pick_lan_ip(candidates) -> str | None:
+    """First genuine private-LAN IP, preferring home Wi-Fi (192.168) > 10 > 172."""
+    for prefix in ("192.168.", "10.", "172."):
+        for ip in candidates:
+            if ip and ip.startswith(prefix) and _is_private_lan(ip):
+                return ip
+    return None
+
+
+def _candidate_ips() -> list[str]:
+    ips: list[str] = []
+    # default-route source IP — correct UNLESS a VPN/proxy TUN hijacks the route
+    # (then this is the fake 198.18.x gateway, filtered out by _pick_lan_ip).
     try:
         with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as s:
             s.connect(("8.8.8.8", 80))
-            ip = s.getsockname()[0]
+            ips.append(s.getsockname()[0])
     except OSError:
-        return None
-    return ip if ip and not ip.startswith("127.") else None
+        pass
+    # macOS physical/Wi-Fi interfaces (enX) — never the VPN tun (utunX), so a real
+    # LAN IP survives a fake-ip TUN that captured the default route.
+    for i in range(10):
+        try:
+            r = subprocess.run(["ipconfig", "getifaddr", f"en{i}"],
+                               capture_output=True, text=True, timeout=2)
+            ip = r.stdout.strip()
+            if ip:
+                ips.append(ip)
+        except (OSError, subprocess.SubprocessError):
+            pass
+    return ips
+
+
+def _lan_ip() -> str | None:
+    """Best-effort LAN IP a phone on the same Wi-Fi can reach (None if offline).
+    Resistant to Clash/Surge fake-ip TUNs that would otherwise return 198.18.x."""
+    return _pick_lan_ip(_candidate_ips())
 
 
 def _ensure_server(root: Path, port: int) -> int:

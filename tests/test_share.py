@@ -11,6 +11,20 @@ def test_qr_data_uri_is_png():
     assert uri.startswith("data:image/png;base64,")
 
 
+def test_pick_lan_ip_rejects_vpn_fakeip_prefers_real_wifi():
+    # Clash/Surge fake-ip TUN gateway must lose to the real Wi-Fi IP, never become the QR
+    assert share._pick_lan_ip(["198.18.0.1", "192.168.0.105"]) == "192.168.0.105"
+    assert share._pick_lan_ip(["198.18.0.1"]) is None          # no false phone link
+    assert share._pick_lan_ip(["10.0.0.5", "192.168.1.2"]) == "192.168.1.2"  # 192.168 wins
+
+
+def test_is_private_lan_ranges():
+    for ok in ("192.168.0.105", "10.1.2.3", "172.16.0.1", "172.31.255.1"):
+        assert share._is_private_lan(ok), ok
+    for bad in ("198.18.0.1", "100.64.0.1", "169.254.1.1", "172.32.0.1", "127.0.0.1", "", None):
+        assert not share._is_private_lan(bad), bad
+
+
 def test_build_share_payload_uses_reachable_lan_url(tmp_path, monkeypatch):
     monkeypatch.setattr(share, "_lan_ip", lambda: "192.168.1.77")  # deterministic LAN IP
     card = tmp_path / "card.png"

@@ -6,7 +6,8 @@ nudge fights "I'm not using my plan" instead of merely reporting it.
 
 Credentials reuse the existing park-io setup: env vars
 PARKIO_TELEGRAM_BOT_TOKEN / PARKIO_TELEGRAM_CHAT_ID, else
-~/park-io/secrets/telegram-bot-token / telegram-chat-id.
+~/park-io/secrets/telegram-bot-token / telegram-chat-id, else the same files
+under ~/park-io/_secrets.
 
 Usage:
   python3 nudge.py            # send only if behind (or final checkpoint)
@@ -26,7 +27,10 @@ import core
 import limits
 import sessions
 
-SECRETS = Path.home() / "park-io" / "secrets"
+SECRET_DIRS = (
+    Path.home() / "park-io" / "secrets",
+    Path.home() / "park-io" / "_secrets",
+)
 WEEKDAY = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
 
 
@@ -36,9 +40,10 @@ def _load_secret(env_name: str, filename: str) -> str:
     val = os.environ.get(env_name, "").strip()
     if val:
         return val
-    f = SECRETS / filename
-    if f.exists():
-        return f.read_text(encoding="utf-8").strip()
+    for directory in SECRET_DIRS:
+        f = directory / filename
+        if f.exists():
+            return f.read_text(encoding="utf-8").strip()
     return ""
 
 

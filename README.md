@@ -17,9 +17,9 @@
 in   本地日志  ~/.claude/projects/**/*.jsonl (Claude) + ~/.codex/sessions/**/*.jsonl (Codex)
    + models.dev 单价表 (直连, 每日本地缓存)   [CodexBar 可选: 仅 Claude 的 session/weekly %]
 
-out  常驻桌面 goad widget + Telegram 鞭策推送 + CLI 状态 + 可分享竖版战绩卡 (PNG + QR 分享页)
+out  常驻桌面 goad widget + Telegram 鞭策推送 + CLI 状态 + 可分享竖版战绩卡/单日纪录卡 (PNG + QR 分享页)
    鞭策面: 今日 token vs 150M/天目标 · pace 配速 · session/weekly 剩余额度 · today/30d cost
-   战绩面: 西游记档位 · 生涯累计 · 单会话峰值 · 缓存命中率 · 徽章 · 顶部 X 身份 · 页脚 builder CTA
+   战绩面: 西游记档位 · 生涯累计 · 单日峰值 · 单会话峰值 · 缓存命中率 · 徽章 · 顶部 X 身份 · 页脚 builder CTA
 
 fail CodexBar 未运行 / 数据 >6h 旧  → Claude 额度显示 "—" / ⚠stale,其余照常工作
 fail 模型不在价格表 (如新出的 claude-opus-4-8)  → 家族回退到最新同族费率,而非算成 $0
@@ -105,7 +105,9 @@ web/widget.html   (Telegram 推送)  (终端状态)    (可选·自动烧额度)
 分享逻辑是两层：
 
 - **PNG 本身可转发**：卡片页脚内置 TokenPulse QR，扫码进入 `https://park-ai-intel.com/tokenpulse`；builder 入口以 X / 红书 / 抖音 icon + ID 呈现。
-- **Widget 分享按钮**：本地生成 PNG，同时生成一个手机可扫的分享页 QR；有 `cloudflared` 时临时开 HTTPS，手机打开后可走系统分享面板，拿不到 tunnel 时降级为本地页面 + Finder。
+- **Widget 分享按钮**：本地生成月度战绩卡 PNG，同时生成一个手机可扫的分享页 QR；有 `cloudflared` 时临时开 HTTPS，手机打开后可走系统分享面板，拿不到 tunnel 时降级为本地页面 + Finder。
+- **单日纪录卡**：展开 widget 详情面板，点“最高日 … 晒”，会生成独立的 `TokenPulse 单日纪录卡` 分享页和 `tokenpulse-record-card.png`。
+- **每日本地快照**：`install.sh` 会安装 `com.tokenpulse.card-snapshot`，每天北京时间 `12:00` 自动保存月度战绩卡 + 单日纪录卡到 `.card-out/daily-snapshots/YYYY-MM-DD/`。
 
 **西游记档位**（按月滚动 token 孵化，`badges.py`）：
 
@@ -138,7 +140,7 @@ git clone https://github.com/zinan92/tokenpulse.git
 cd tokenpulse
 
 # 2. 一键安装：装依赖 + 首次从 config.example.json 生成 config.json + 装成 launchd 常驻
-#    （widget 开机自启 / 崩溃重拉，Telegram 定时鞭策）
+#    （widget 开机自启 / 崩溃重拉，Telegram 定时鞭策 / 北京时间 12:00 本地保存两张卡片）
 ./install.sh
 #    然后在 widget 的「设置」面板填上你的 X / 小红书号（战绩卡署名）；卡片页脚的
 #    builder CTA 是作者署名，跟着每张卡走，不用你管。
@@ -147,6 +149,7 @@ cd tokenpulse
 pip3 install -r requirements.txt
 python3 cli.py          # 终端看今日状态（最轻量，core/cli 纯 stdlib）
 python3 webwidget.py    # 桌面 goad widget（无边框置顶，可拖动）
+python3 daily_snapshot.py --force  # 立刻保存今天的月度战绩卡 + 单日纪录卡
 
 # —— 只想要终端命令？装个全局 CLI（纯 stdlib，零重依赖）——
 pipx install .          # 之后直接 `tokenpulse` / `tokenpulse-nudge`
@@ -166,7 +169,9 @@ pipx install .          # 之后直接 `tokenpulse` / `tokenpulse-nudge`
 | today/30d cost + tokens + 缓存命中 | models.dev 单价**直连**，新模型家族回退 | ✅ |
 | **🐵 西游记档位 + 徽章** | 按月用量孵化 8 档（石猴→如来），多维徽章（`badges.py`） | ✅ |
 | **可分享竖版战绩卡** | 小红书 3:4、竖向天梯、SF Compact + 思源黑体、顶部 X 身份 + 页脚 builder CTA（`card.py`） | ✅ |
+| **单日纪录卡** | 单日最高 token 记录独立 PNG；widget 里“最高日 … 晒”直接生成分享页 | ✅ |
 | **QR 分享页** | 分享按钮生成 PNG + 移动分享页 QR；有 `cloudflared` 时走临时 HTTPS（系统分享 + `og:image` 让 X 展开卡片），否则绑 LAN（手机同 wifi 可扫开、保存图片）| ✅ |
+| **每日卡片快照** | `daily_snapshot.py` + launchd，每天北京时间 12:00 本地保存月度战绩卡和单日纪录卡 | ✅ |
 | **生涯累计 / 单会话峰值** | 永不裁剪的单调累加器（`lifetime.py` / `peaks.py`） | ✅ |
 | 在线时长 / 最长连续在线 | 合并双工具时间线（`history` / `continuity.py`）— 仅面板 | ✅ |
 | goad widget (web) | 暗色、drenched 状态反应、count-up、达标 flare、详情面板 + 战绩卡按钮 | ✅ |
@@ -249,7 +254,7 @@ name: tokenpulse
 capability:
   summary: Track daily token usage across Claude Code + Codex subscription plans, goad the user to use more, and turn cumulative usage into a shareable leveling card.
   in: local logs (~/.claude/projects, ~/.codex/sessions) + models.dev prices (direct). CodexBar optional (only Claude's session/weekly %).
-  out: always-on-top "goad" desktop widget + Telegram nudges + CLI status (today tokens vs target, pace, session/weekly %, cost) + a shareable portrait "战绩卡" PNG (西游记 tier + lifetime total + single-session peak + cache hit-rate + badges)
+  out: always-on-top "goad" desktop widget + Telegram nudges + CLI status (today tokens vs target, pace, session/weekly %, cost) + shareable portrait PNG cards (monthly 战绩卡 + single-day record card)
   fail:
     - "CodexBar not running / data >6h stale → plan limits show — / ⚠stale; token tracking still works"
     - "model missing from price table → family fallback to latest sibling's rate (not $0)"
@@ -263,9 +268,9 @@ cli_flags:
   - name: --sessions
     type: boolean
     description: list recent resumable Claude/Codex sessions
-programmatic_entry: "import webdata; webdata.core_payload()  # goal/pace/limits · webdata.cost_payload() cost · import badges; badges.card_data() tier/lifetime/badges · import card; card.make_card() render PNG · import share; share.build_share_payload(path) QR/share page"
-install_command: "./install.sh   # deps + first-run config + launchd widget/nudge   ·   or: pipx install .   # global `tokenpulse` CLI (stdlib only)"
-start_command: "python3 webwidget.py   # widget  ·  python3 cli.py   # status  ·  python3 nudge.py   # telegram"
+programmatic_entry: "import webdata; webdata.core_payload()  # goal/pace/limits · webdata.cost_payload() cost · import badges; badges.card_data() tier/lifetime/badges · import card; card.make_card()/make_record_card() render PNG · import daily_snapshot; daily_snapshot.snapshot_cards() local snapshots · import share; share.build_share_payload(path) QR/share page"
+install_command: "./install.sh   # deps + first-run config + launchd widget/nudge/card-snapshot   ·   or: pipx install .   # global `tokenpulse` CLI (stdlib only)"
+start_command: "python3 webwidget.py   # widget  ·  python3 cli.py   # status  ·  python3 nudge.py   # telegram  ·  python3 daily_snapshot.py --force   # save both cards now"
 requires: "nothing external for core (tokens/cost via models.dev, Codex limits local); CodexBar optional, only for Claude's session/weekly %"
 ```
 

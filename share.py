@@ -165,19 +165,25 @@ def _cleanup_old(root: Path, ttl_hours: int | float):
 
 
 def _page_html(*, title: str, x_via: str, builder_url: str, douyin_id: str, xhs_id: str,
-               card_url: str = "") -> str:
+               card_url: str = "", share_text: str = "我用 TokenPulse 生成了一张 AI token 战绩卡。",
+               body_text: str = "先分享图片；如果系统不支持文件分享，就保存图片后打开目标平台发布。",
+               filename: str = "tokenpulse-card.png") -> str:
     safe_title = html.escape(title)
     safe_xhs = html.escape(xhs_id or "")
     safe_douyin = html.escape(douyin_id or "")
     safe_card = html.escape(card_url or "card.png")
+    safe_desc = html.escape(share_text)
+    safe_body = html.escape(body_text)
+    safe_filename = html.escape(filename)
     js = {
         "title": title,
-        "text": "我用 TokenPulse 生成了一张 AI token 战绩卡。",
+        "text": share_text,
         "xVia": x_via,
         "builderUrl": builder_url,
+        "filename": filename,
     }
     js_blob = json.dumps(js, ensure_ascii=False)
-    x_url = "https://x.com/intent/tweet?text=" + quote("我用 TokenPulse 生成了一张 AI token 战绩卡") + "&url="
+    x_url = "https://x.com/intent/tweet?text=" + quote(share_text) + "&url="
     return f"""<!doctype html>
 <html lang="zh-CN">
 <head>
@@ -185,7 +191,7 @@ def _page_html(*, title: str, x_via: str, builder_url: str, douyin_id: str, xhs_
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>{safe_title}</title>
 <meta property="og:title" content="{safe_title}">
-<meta property="og:description" content="我用 TokenPulse 生成了一张 AI token 战绩卡。">
+<meta property="og:description" content="{safe_desc}">
 <meta property="og:image" content="{safe_card}">
 <meta name="twitter:card" content="summary_large_image">
 <meta name="twitter:image" content="{safe_card}">
@@ -206,12 +212,12 @@ def _page_html(*, title: str, x_via: str, builder_url: str, douyin_id: str, xhs_
 </head>
 <body>
 <main>
-  <img class="card" src="card.png" alt="TokenPulse 战绩卡">
-  <h1>TokenPulse 战绩卡</h1>
-  <p>先分享图片；如果系统不支持文件分享，就保存图片后打开目标平台发布。</p>
+  <img class="card" src="card.png" alt="{safe_title}">
+  <h1>{safe_title}</h1>
+  <p>{safe_body}</p>
   <div class="actions">
     <button class="primary" id="share">分享图片</button>
-    <a href="card.png" download="tokenpulse-card.png">保存图片</a>
+    <a href="card.png" download="{safe_filename}">保存图片</a>
     <button id="copy">复制文案</button>
     <a id="xlink" href="{x_url}" rel="noopener">发到 X</a>
     <a href="https://www.xiaohongshu.com/" rel="noopener">打开小红书</a>
@@ -231,7 +237,7 @@ document.getElementById("share").addEventListener("click", async () => {{
   try {{
     const res = await fetch("card.png");
     const blob = await res.blob();
-    const file = new File([blob], "tokenpulse-card.png", {{type: blob.type || "image/png"}});
+    const file = new File([blob], SHARE.filename || "tokenpulse-card.png", {{type: blob.type || "image/png"}});
     if (navigator.canShare && navigator.canShare({{files:[file]}})) {{
       await navigator.share({{title: SHARE.title, text: SHARE.text, files:[file]}});
       return;
@@ -264,6 +270,10 @@ def build_share_payload(
     *,
     root: Path = OUT_ROOT,
     start_tunnel: bool = True,
+    title: str = "TokenPulse 战绩卡",
+    share_text: str = "我用 TokenPulse 生成了一张 AI token 战绩卡。",
+    body_text: str = "先分享图片；如果系统不支持文件分享，就保存图片后打开目标平台发布。",
+    filename: str = "tokenpulse-card.png",
 ) -> dict:
     config = config or core.load_config()
     share_cfg = config.get("share") if isinstance(config.get("share"), dict) else {}
@@ -294,12 +304,15 @@ def build_share_payload(
     # unfurl the card image (only meaningful over the public https tunnel).
     (page_dir / "index.html").write_text(
         _page_html(
-            title="TokenPulse 战绩卡",
+            title=title,
             x_via=handle,
             builder_url=builder_url,
             douyin_id=builder.get("douyin_id") or "",
             xhs_id=builder.get("xhs_id") or "",
             card_url=f"{base}/{sid}/card.png",
+            share_text=share_text,
+            body_text=body_text,
+            filename=filename,
         ),
         encoding="utf-8",
     )
@@ -311,6 +324,8 @@ def build_share_payload(
         "share_id": sid,
         "page_dir": str(page_dir),
         "card": str(page_dir / "card.png"),
+        "title": title,
+        "filename": filename,
         "reachable": "https" if https else ("lan" if lan_ip else "local"),
         "mode": "https" if https else "local",
     }

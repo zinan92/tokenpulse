@@ -2,6 +2,7 @@
 # Install TokenPulse macOS launch agents:
 #   - widget : always-on-top desktop coach, relaunched at login / if it crashes
 #   - nudge  : Telegram push at the checkpoint times in config.json
+#   - snapshot: save monthly + single-day-record cards every day at Beijing noon
 #
 # Re-run any time to pick up config/path changes. Use ./uninstall.sh to remove.
 set -euo pipefail
@@ -75,14 +76,41 @@ $INTERVALS
 </plist>
 PLIST
 
+# ---- daily card snapshot agent (Beijing noon) ------------------------------
+cat > "$LA/com.tokenpulse.card-snapshot.plist" <<PLIST
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key><string>com.tokenpulse.card-snapshot</string>
+  <key>ProgramArguments</key>
+    <array><string>$PY</string><string>$DIR/daily_snapshot.py</string></array>
+  <key>WorkingDirectory</key><string>$DIR</string>
+  <key>RunAtLoad</key><false/>
+  <key>StartCalendarInterval</key>
+    <dict><key>Hour</key><integer>12</integer><key>Minute</key><integer>0</integer></dict>
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>TZ</key><string>Asia/Shanghai</string>
+  </dict>
+  <key>StandardOutPath</key><string>$DIR/snapshot.out.log</string>
+  <key>StandardErrorPath</key><string>$DIR/snapshot.err.log</string>
+</dict>
+</plist>
+PLIST
+
 UID_NUM="$(id -u)"
-for label in com.tokenpulse.widget com.tokenpulse.nudge; do
+for label in com.tokenpulse.widget com.tokenpulse.nudge com.tokenpulse.card-snapshot; do
   launchctl bootout "gui/$UID_NUM/$label" 2>/dev/null || true
-  launchctl bootstrap "gui/$UID_NUM" "$LA/$label.plist"
+  if ! launchctl bootstrap "gui/$UID_NUM" "$LA/$label.plist"; then
+    sleep 1
+    launchctl bootstrap "gui/$UID_NUM" "$LA/$label.plist"
+  fi
   echo "loaded $label"
 done
 
 echo
 echo "✓ Installed. Widget should appear top-right now."
 echo "  Nudge checkpoints: $(${PY} -c "import json;print(', '.join(json.load(open('$DIR/config.json'))['checkpoints']))")"
-echo "  Logs: $DIR/{widget,nudge}.{out,err}.log"
+echo "  Daily card snapshot: Beijing 12:00 → $DIR/.card-out/daily-snapshots/"
+echo "  Logs: $DIR/{widget,nudge,snapshot}.{out,err}.log"

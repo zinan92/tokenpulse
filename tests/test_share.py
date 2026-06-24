@@ -54,3 +54,27 @@ def test_build_share_payload_local_fallback_when_offline(tmp_path, monkeypatch):
     payload = share.build_share_payload(card, config=cfg, root=tmp_path / "share", start_tunnel=False)
     assert payload["url"].startswith("http://127.0.0.1:")
     assert payload["reachable"] == "local"
+
+
+def test_build_share_payload_accepts_record_card_copy(tmp_path, monkeypatch):
+    monkeypatch.setattr(share, "_lan_ip", lambda: "192.168.1.77")
+    card = tmp_path / "record.png"
+    card.write_bytes(b"record-png")
+    cfg = {"builder": {}, "share": {"mode": "local", "port": 0, "base_url": ""}}
+
+    payload = share.build_share_payload(
+        card,
+        config=cfg,
+        root=tmp_path / "share",
+        start_tunnel=False,
+        title="TokenPulse 单日纪录卡",
+        share_text="我刷新了 TokenPulse 单日 token 纪录。",
+        filename="tokenpulse-record-card.png",
+    )
+
+    html = (tmp_path / "share" / payload["share_id"] / "index.html").read_text(encoding="utf-8")
+    assert payload["title"] == "TokenPulse 单日纪录卡"
+    assert payload["filename"] == "tokenpulse-record-card.png"
+    assert "TokenPulse 单日纪录卡" in html
+    assert "我刷新了 TokenPulse 单日 token 纪录。" in html
+    assert 'download="tokenpulse-record-card.png"' in html

@@ -3,7 +3,7 @@
 set -euo pipefail
 LA="$HOME/Library/LaunchAgents"
 UID_NUM="$(id -u)"
-for label in com.tokenpulse.widget com.tokenpulse.nudge; do
+for label in com.tokenpulse.widget com.tokenpulse.nudge com.tokenpulse.card-snapshot; do
   launchctl bootout "gui/$UID_NUM/$label" 2>/dev/null || true
   rm -f "$LA/$label.plist"
   echo "removed $label"

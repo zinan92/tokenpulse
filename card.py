@@ -23,6 +23,7 @@ W, H = 1080, 1440          # 小红书 3:4 portrait
 PAD = 84
 CX = W // 2
 OUT_DEFAULT = os.path.join(os.path.dirname(os.path.abspath(__file__)), ".card-out", "tokenpulse-card.png")
+OUT_RECORD_DEFAULT = os.path.join(os.path.dirname(os.path.abspath(__file__)), ".card-out", "tokenpulse-record-card.png")
 
 BG = (12, 15, 20)
 BG2 = (22, 27, 36)
@@ -144,6 +145,14 @@ def _usd(n):
     return "$" + f"{round(n or 0):,}"
 
 
+def _date_label(date_iso: str | None) -> str:
+    s = (date_iso or "")[:10]
+    parts = s.split("-")
+    if len(parts) == 3 and all(parts):
+        return ".".join(parts)
+    return s
+
+
 def _glow(size, xy, radius, color, alpha):
     g = Image.new("RGBA", size, (0, 0, 0, 0))
     ImageDraw.Draw(g).ellipse([xy[0] - radius, xy[1] - radius, xy[0] + radius, xy[1] + radius],
@@ -207,7 +216,7 @@ def _builder(data: dict) -> dict:
 
 
 def render(data, out_path=OUT_DEFAULT, date_str=""):
-    tier = data["tier"]
+    tier = data.get("tier") or {}
     life = data.get("lifetime") or {}
     handles = data.get("handles") or {}
     rs = data.get("rank_self") or {}
@@ -374,6 +383,153 @@ def render(data, out_path=OUT_DEFAULT, date_str=""):
 
 def make_card(out_path=OUT_DEFAULT, date_str=""):
     return render(badges.card_data(), out_path, date_str)
+
+
+def render_record(data, out_path=OUT_RECORD_DEFAULT, date_str=""):
+    """Render the all-time single-day record as its own share card."""
+    record = data.get("record_day") or (data.get("rank_self") or {}).get("peak_day") or {}
+    total = int(record.get("total", 0) or 0)
+    if total <= 0:
+        raise ValueError("no record day available")
+
+    tier = data.get("tier") or {}
+    life = data.get("lifetime") or {}
+    handles = data.get("handles") or {}
+    builder = _builder(data)
+    x_handle = (handles.get("x") or "").lstrip("@")
+    target = int(data.get("combined_target", 0) or 0)
+    record_date = _date_label(record.get("date") or date_str)
+
+    img = Image.new("RGB", (W, H), BG)
+    img = img.convert("RGBA")
+    img.alpha_composite(_glow((W, H), (CX, 120), 600, HEAT, 78))
+    img.alpha_composite(_glow((W, H), (CX + 260, 620), 310, GOLD, 28))
+    d = ImageDraw.Draw(img)
+
+    # Header: this card is about one day, not the monthly identity ladder.
+    _spaced(d, (PAD, 72), "TOKENPULSE", _av(21), DIM, 5, anchor="l")
+    d.text((W - PAD - d.textlength(record_date, font=_av(21, bold=False)), 66),
+           record_date, font=_av(21, bold=False), fill=DIM)
+    if x_handle:
+        icon = _brand_icon("x", 20)
+        text = f"@{x_handle}"
+        font = _av(22, bold=False)
+        gap = 8
+        icon_w = icon.width if icon else 0
+        x0 = PAD
+        if icon:
+            img.alpha_composite(icon, (x0, 123))
+            x0 += icon_w + gap
+        d.text((x0, 120), text, font=font, fill=INK)
+
+    burst = _emoji("💥", 126)
+    if burst:
+        img.alpha_composite(burst, (CX - burst.width // 2, 178))
+    _spaced(d, (CX, 336), "SINGLE DAY RECORD", _av(25), GOLD, 6, anchor="c")
+    _ct(d, 374, "单日纪录", _han(70, bold=True), HEAT)
+
+    big = _disp(218)
+    num = _tok(total)
+    nw = d.textlength(num, font=big)
+    d.text((CX - nw / 2, 488), num, font=big, fill=INK)
+    _ct(d, 710, "tokens burned in one local day", _av(25, bold=False), DIM)
+
+    if target > 0:
+        ratio = total / target
+        ratio_text = f"≈ {ratio:.1f}× 今日目标"
+    else:
+        ratio_text = "历史最高单日吞吐"
+    _ct(d, 782, ratio_text, _han(34, bold=True), GOLD)
+
+    # Three compact proof/context blocks.
+    box_y, box_h, gap = 870, 128, 18
+    box_w = (W - PAD * 2 - gap * 2) // 3
+    stats = [
+        ("当前身份", tier["name"], HEAT),
+        ("本月吞吐", _tok(data.get("monthly_tokens", 0)), INK),
+        ("生涯累计", _tok(life.get("lifetime_tokens", 0)), GOLD),
+    ]
+    for i, (label, value, fill) in enumerate(stats):
+        x = PAD + i * (box_w + gap)
+        d.rounded_rectangle([x, box_y, x + box_w, box_y + box_h], radius=14, fill=ROW,
+                            outline=TRACK, width=1)
+        _spaced(d, (x + 22, box_y + 22), label.upper(), _han(17), FAINT, 2, anchor="l")
+        d.text((x + 22, box_y + 58), value, font=_han(31, bold=True), fill=fill)
+
+    # Badge strip, tuned down so the record number remains the hero.
+    by = 1050
+    cx = PAD
+    for b in (data.get("badges") or [])[:4]:
+        ce = _emoji(b["icon"], 22)
+        label = b["name"]
+        chw = int((ce.width + 7 if ce else 0) + d.textlength(label, font=_han(18)) + 28)
+        if cx + chw > W - PAD:
+            break
+        fill = (48, 38, 24) if b.get("hero") else CHIP
+        d.rounded_rectangle([cx, by, cx + chw, by + 38], radius=19, fill=fill)
+        ix = cx + 13
+        if ce:
+            img.alpha_composite(ce, (int(ix), by + 8)); ix += ce.width + 7
+        d.text((int(ix), by + 9), label, font=_han(18), fill=GOLD if b.get("hero") else INK)
+        cx += chw + 10
+
+    # Footer: same builder/proof contract as the monthly card.
+    footer_top = H - 134
+    fy = footer_top + 38
+    d.line([(PAD, footer_top), (W - PAD, footer_top)], fill=TRACK, width=1)
+    ve = _emoji("✅", 16)
+    vx = PAD
+    if ve:
+        img.alpha_composite(ve, (PAD, fy + 2)); vx = PAD + ve.width + 6
+    d.text((vx, fy), "本地日志核验 · 单日峰值非自填", font=_han(17), fill=FAINT)
+    if date_str:
+        d.text((PAD, fy + 30), date_str, font=_av(15, bold=False), fill=FAINT)
+
+    qr_url = builder.get("url") or core.DEFAULT_CONFIG["builder"]["url"]
+    qr_size = 104
+    qx, qy = W - PAD - qr_size, footer_top + 14
+    try:
+        qrim = share.qr_pil(qr_url, qr_size).convert("RGBA")
+        d.rounded_rectangle([qx - 6, qy - 6, qx + qr_size + 6, qy + qr_size + 6], radius=10,
+                            fill=(238, 242, 247))
+        img.alpha_composite(qrim, (qx, qy))
+    except Exception:  # noqa: BLE001
+        qx = W - PAD
+
+    tx = qx - 20
+    wm = "TOKENPULSE"
+    wmw = d.textlength(wm, font=_av(20))
+    fe = _emoji("⏱", 18)
+    icon_x = tx - wmw - (fe.width + 7 if fe else 0)
+    if fe and icon_x > PAD:
+        img.alpha_composite(fe, (int(icon_x), fy - 2))
+    d.text((tx - wmw, fy), wm, font=_av(20), fill=DIM)
+    channel_font = _av(19, bold=True)
+    channel_lines = []
+    if builder.get("xhs_id"):
+        channel_lines.append(("xhs", builder["xhs_id"], INK))
+    if builder.get("douyin_id"):
+        channel_lines.append(("douyin", builder["douyin_id"], GOLD))
+    for i, (kind, value, fill) in enumerate(channel_lines[:2]):
+        icon = _brand_icon(kind, 20)
+        y = fy + 29 + i * 25
+        gap = 8
+        value_w = d.textlength(value, font=channel_font)
+        icon_w = icon.width if icon else 0
+        total_w = icon_w + (gap if icon else 0) + value_w
+        x0 = tx - total_w
+        if icon:
+            img.alpha_composite(icon, (int(x0), int(y + 1)))
+            x0 += icon_w + gap
+        d.text((x0, y), value, font=channel_font, fill=fill)
+
+    os.makedirs(os.path.dirname(out_path), exist_ok=True)
+    img.convert("RGB").save(out_path)
+    return out_path
+
+
+def make_record_card(out_path=OUT_RECORD_DEFAULT, date_str=""):
+    return render_record(badges.card_data(), out_path, date_str)
 
 
 if __name__ == "__main__":

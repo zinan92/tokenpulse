@@ -22,6 +22,10 @@
     "base_url": "",
     "ttl_hours": 24
   },
+  "ranking": {
+    "enabled": false,
+    "url": ""
+  },
   "telegram": { "enabled": false },
   "furnace": {
     "enabled": false,

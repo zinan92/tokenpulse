@@ -1,0 +1,8 @@
+name            = "tokenpulse-rank"
+main            = "worker.js"
+compatibility_date = "2025-01-01"
+
+[[d1_databases]]
+binding       = "DB"
+database_name = "tokenpulse-rankings"
+database_id = "15d4bd9c-468a-4555-bd7f-7c144cfc113a"

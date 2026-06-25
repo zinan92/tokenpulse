@@ -216,6 +216,9 @@
   .srow input.wide { width: 54px; }
   .srow input.wider { width: 96px; }
   .srow .at { color: var(--ink-faint); margin-right: -3px; }
+  .srow .consent { display: inline-flex; align-items: center; gap: 4px; color: var(--ink-dim);
+    font-size: 11px; cursor: pointer; white-space: nowrap; }
+  .srow .consent input { width: auto; margin: 0; }
   .srow input:focus { outline: none; border-color: var(--heat); }
   #s-save { background: var(--heat-soft); color: var(--heat); border: 1px solid transparent;
             border-radius: 6px; padding: 4px 16px; font-size: 11px; font-weight: 700;
@@ -423,6 +426,9 @@
           <span class="at">@</span><input id="s-handle" class="wider" placeholder="yourhandle"><i>战绩卡署名</i></div>
         <div class="srow"><span class="slbl">小红书号</span>
           <input id="s-xhs" class="wider" placeholder="RED ID"><i>选填</i></div>
+        <div class="srow"><span class="slbl">烧量榜</span>
+          <label class="consent"><input type="checkbox" id="s-rank"> 加入排名</label>
+          <i>勾选=同意上传你的 handle + 烧量参与排名；不勾只留本地（需先填 handle）</i></div>
         <div class="srow"><span class="slbl">追踪厂商</span><i>勾选要统计的厂商；只有 tokens 计入烧量</i></div>
         <div id="s-providers" class="provs"></div>
         <div class="srow"><button id="s-save">保存</button>
@@ -717,10 +723,11 @@
       if (total >= RANK_POOL_MIN) {
         const pct = Math.max(1, Math.round(me.rank / total * 100));
         label = `<span class="nm">全球烧量榜</span><span>第 <b>${me.rank}</b> / ${total} 名 · Top <b>${pct}%</b> · ${burn}</span>`;
-      } else if (me.rank === 1) {
+      } else if (total <= 1) {
         label = `<span class="nm">创始操作者</span><span><b>#1</b> · ${burn}</span>`;
       } else {
-        label = `<span class="nm">创始梯队</span><span><b>#${me.rank}</b> / ${total} · ${burn}</span>`;
+        // small consented board (you + friends): show the real head-to-head, no faked percentile
+        label = `<span class="nm">烧量榜</span><span>第 <b>${me.rank}</b> / ${total} 名 · ${burn}</span>`;
       }
       box.innerHTML = label;
       box.hidden = false;
@@ -764,6 +771,7 @@
     $("s-tx").value = (t.codex || {}).weekday ?? "";
     $("s-handle").value = (c.handle || "").replace(/^@/, "");
     $("s-xhs").value = c.xhs_id || "";
+    $("s-rank").checked = !!(c.ranking && c.ranking.enabled);
   }
   async function loadConfig() {
     try { populateSettings(JSON.parse(await window.pywebview.api.config())); } catch (e) {}
@@ -806,12 +814,16 @@
     if (tx !== undefined) (partial.targets ??= {}).codex = { weekday: tx, weekend: tx };
     partial.handle = $("s-handle").value.trim().replace(/^@/, "");  // empty -> default
     partial.xhs_id = $("s-xhs").value.trim();  // empty -> hidden on card
+    const consent = $("s-rank").checked;       // leaderboard opt-in
+    partial.ranking = { enabled: consent };    // url is preserved by the deep-merge
     await saveProviders();   // enabled set -> config, keys -> keychain
     try {
       const r = JSON.parse(await window.pywebview.api.save_config(JSON.stringify(partial)));
       if (r.ok) {
         msg.textContent = "已保存 ✓"; msg.className = "smsg ok";
-        tick(); tickCost(); loadPanel();      // apply immediately
+        // just consented -> push to the board now so the rank line lights up immediately
+        if (consent) { try { await window.pywebview.api.ranking_submit_now(); } catch (e) {} }
+        tick(); tickCost(); loadPanel();      // apply immediately (loadPanel refreshes the rank line)
       } else {
         msg.textContent = "无效: " + (r.errors || []).join(", "); msg.className = "smsg err";
       }

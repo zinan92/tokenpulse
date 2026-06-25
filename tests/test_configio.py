@@ -53,3 +53,23 @@ def test_save_partial_rejects_invalid(tmp_path, monkeypatch):
     res = configio.save_partial({"targets": {"claude": {"weekday": -5}}})
     assert res["ok"] is False and res["errors"]
     assert cfg.read_text() == "{}"   # nothing written on failure
+
+
+def test_validate_ranking_consent():
+    assert configio.validate_partial({"ranking": {"enabled": True}}) == []
+    assert configio.validate_partial({"ranking": {"enabled": False}}) == []
+    assert "ranking.enabled" in configio.validate_partial({"ranking": {"enabled": "yes"}})
+    assert "ranking" in configio.validate_partial({"ranking": "nope"})
+
+
+def test_save_partial_ranking_consent_preserves_url(tmp_path, monkeypatch):
+    """Toggling consent must flip enabled but KEEP the shipped board url (the UI
+    only sends {ranking:{enabled:...}}; the deep-merge preserves url)."""
+    cfg = tmp_path / "config.json"
+    cfg.write_text(json.dumps({"ranking": {"enabled": False, "url": "https://board.dev"}}))
+    monkeypatch.setattr(configio, "CONFIG_PATH", cfg)
+
+    res = configio.save_partial({"ranking": {"enabled": True}})
+    assert res["ok"] is True
+    written = json.loads(cfg.read_text())
+    assert written["ranking"] == {"enabled": True, "url": "https://board.dev"}

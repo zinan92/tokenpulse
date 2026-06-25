@@ -176,6 +176,16 @@ class Api:
         except Exception as exc:  # noqa: BLE001
             return json.dumps({"error": str(exc)})
 
+    def ranking_submit_now(self) -> str:
+        """Push to the board immediately (called right after the user consents in
+        settings) and drop the cache so the rank line reflects it at once."""
+        try:
+            res = _submit_ranking()
+            self._rank_cache = None
+            return json.dumps({"ok": bool(res), "result": res}, default=str)
+        except Exception as exc:  # noqa: BLE001
+            return json.dumps({"ok": False, "error": str(exc)})
+
     def ranking_top(self) -> str:
         """Top-10 global ranking + current user's position (TTL-cached 5 min)."""
         import time as _time

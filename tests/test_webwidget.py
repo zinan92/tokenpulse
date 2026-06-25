@@ -140,6 +140,26 @@ def test_ranking_top_uses_ttl_cache(monkeypatch):
     assert calls["top"] == 1
 
 
+def test_ranking_submit_now_pushes_and_clears_cache(monkeypatch):
+    """The consent-time immediate submit reports success and drops the rank cache
+    so the next ranking_top() refetches the freshly-submitted standing."""
+    import time as _time
+    monkeypatch.setattr(webwidget, "_submit_ranking", lambda *a, **k: {"ok": True, "rank": 2})
+    api = webwidget.Api()
+    api._rank_cache = (_time.time(), '{"stale": true}')
+
+    out = json.loads(api.ranking_submit_now())
+
+    assert out["ok"] is True and out["result"]["rank"] == 2
+    assert api._rank_cache is None   # forces a refetch on the next ranking_top()
+
+
+def test_ranking_submit_now_when_disabled_returns_not_ok(monkeypatch):
+    monkeypatch.setattr(webwidget, "_submit_ranking", lambda *a, **k: None)  # disabled / no url
+    out = json.loads(webwidget.Api().ranking_submit_now())
+    assert out["ok"] is False
+
+
 def test_share_card_monthly_default_route(monkeypatch, tmp_path):
     """The default (monthly) path — what celebrateHatch auto-fires and the share
     button uses — must render the monthly card with no record-only copy."""

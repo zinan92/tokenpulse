@@ -24,7 +24,7 @@
   },
   "ranking": {
     "enabled": false,
-    "url": ""
+    "url": "https://tokenpulse-rank.zinan92.workers.dev"
   },
   "telegram": { "enabled": false },
   "furnace": {

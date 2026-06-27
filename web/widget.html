@@ -241,7 +241,17 @@
   /* egg / tier */
   .eggsec { border-bottom: 1px solid var(--track); padding-bottom: 11px; }
   .eggrow { display: flex; align-items: center; gap: 10px; }
-  .egg-emo { font-size: 30px; line-height: 1; filter: drop-shadow(0 0 10px var(--heat-soft)); }
+  .egg-orb { position: relative; display: inline-grid; place-items: center;
+    width: 40px; height: 40px; flex: 0 0 auto; }
+  .egg-emo { position: relative; z-index: 2; font-size: 30px; line-height: 1;
+    transition: filter 0.5s var(--ease), transform 0.5s var(--ease); }
+  .egg-aura, .egg-ring { position: absolute; border-radius: 50%; pointer-events: none; opacity: 0; }
+  .egg-aura { inset: -7px; z-index: 0; filter: blur(5px);
+    background: radial-gradient(circle, var(--heat) 0%, transparent 62%); }
+  .egg-ring { inset: -2px; z-index: 1;
+    background: conic-gradient(from 0deg, transparent 0deg, var(--heat) 90deg, transparent 210deg);
+    -webkit-mask: radial-gradient(circle, transparent 57%, #000 60%);
+            mask: radial-gradient(circle, transparent 57%, #000 60%); }
   .egg-txt { flex: 1; min-width: 0; }
   .egg-name { font-size: 15px; font-weight: 700; color: var(--ink); letter-spacing: 0.02em; }
   .egg-sub { font-size: 10.5px; color: var(--ink-faint); margin-top: 1px; }
@@ -267,15 +277,39 @@
     transition: width 0.6s var(--ease); }
   .egg-records { font-size: 10.5px; color: var(--ink-faint); margin-top: 7px; display: flex; flex-wrap: wrap; gap: 6px 12px; }
   .egg-records b { color: var(--ink-dim); font-weight: 700; }
-  /* M4 incubation: the egg reacts to today's feeding (burn%) + droops on a broken streak */
-  .eggsec .egg-emo { transition: filter 0.4s var(--ease), transform 0.4s var(--ease); }
-  .eggsec[data-hunger="starving"]  .egg-emo { filter: grayscale(0.55) brightness(0.72); animation: egg-shiver 2.6s ease-in-out infinite; }
-  .eggsec[data-hunger="eating"]    .egg-emo { animation: egg-bob 2.8s ease-in-out infinite; }
-  .eggsec[data-hunger="full"]      .egg-emo { animation: egg-bob 2.2s ease-in-out infinite; filter: drop-shadow(0 0 12px var(--heat-soft)); }
-  .eggsec[data-hunger="satisfied"] .egg-emo { animation: egg-bob 1.8s ease-in-out infinite; filter: drop-shadow(0 0 16px var(--heat)); }
-  .eggsec[data-drooped="1"] .egg-emo { filter: grayscale(0.7) brightness(0.62); transform: rotate(-7deg) translateY(2px); animation: none; }
-  @keyframes egg-shiver { 0%,100%{transform:translateX(0) rotate(0)} 25%{transform:translateX(-1.5px) rotate(-3deg)} 75%{transform:translateX(1.5px) rotate(3deg)} }
-  @keyframes egg-bob { 0%,100%{transform:translateY(0)} 50%{transform:translateY(-3px)} }
+  /* M4 incubation — 3 emotional registers by today's burn%: 死气沉沉 → 想升级 → 亢奋.
+     Perpetual motion is transform/opacity only (GPU-composited, ~free); filters are static. */
+  /* 死气沉沉 — barely alive: heavy desaturation + a slow labored sink, no aura/ring */
+  .eggsec[data-hunger="starving"] .egg-emo {
+    filter: grayscale(0.85) brightness(0.5) contrast(0.95);
+    animation: egg-dead 4.2s ease-in-out infinite; }
+  @keyframes egg-dead { 0%,100%{transform:translateY(0) scale(1)} 50%{transform:translateY(2.5px) scale(0.97)} }
+  /* 想升级 — waking up + reaching UP, a warm aura breathing brighter as the goal nears;
+     at "full" a halo starts forming = it's almost ready to evolve to the next tier */
+  .eggsec[data-hunger="eating"] .egg-emo { filter: grayscale(0.12) brightness(0.98);
+    animation: egg-rise 2.4s ease-in-out infinite; }
+  .eggsec[data-hunger="eating"] .egg-aura { opacity: 1; animation: aura-breathe 2.4s ease-in-out infinite; }
+  .eggsec[data-hunger="full"] .egg-emo { filter: brightness(1.06);
+    animation: egg-rise 1.8s ease-in-out infinite; }
+  .eggsec[data-hunger="full"] .egg-aura { opacity: 1; animation: aura-breathe 1.8s ease-in-out infinite; }
+  .eggsec[data-hunger="full"] .egg-ring { opacity: 0.45; animation: ring-spin 5s linear infinite; }
+  @keyframes egg-rise { 0%,100%{transform:translateY(0)} 50%{transform:translateY(-3.5px)} }
+  @keyframes aura-breathe { 0%,100%{opacity:0.22;transform:scale(0.88)} 50%{opacity:0.5;transform:scale(1.06)} }
+  /* 亢奋 — radiating power: confident bounce + swagger, pulsing aura, fast-spinning halo */
+  .eggsec[data-hunger="satisfied"] .egg-emo {
+    filter: brightness(1.14) drop-shadow(0 0 9px var(--heat));
+    animation: egg-hype 0.95s ease-in-out infinite; }
+  .eggsec[data-hunger="satisfied"] .egg-aura { opacity: 1; animation: aura-pulse 0.95s ease-in-out infinite; }
+  .eggsec[data-hunger="satisfied"] .egg-ring { opacity: 0.95; animation: ring-spin 1.8s linear infinite; }
+  @keyframes egg-hype { 0%,100%{transform:translateY(0) rotate(0)} 25%{transform:translateY(-4px) rotate(-5deg)}
+                        50%{transform:translateY(-1px) rotate(0)} 75%{transform:translateY(-4px) rotate(5deg)} }
+  @keyframes aura-pulse { 0%,100%{opacity:0.4;transform:scale(0.98)} 50%{opacity:0.85;transform:scale(1.28)} }
+  @keyframes ring-spin { to { transform: rotate(360deg); } }
+  /* broke the streak — dead + slumped; kill aura/ring even if a stale hunger lingers */
+  .eggsec[data-drooped="1"] .egg-emo { filter: grayscale(0.92) brightness(0.45);
+    transform: rotate(-8deg) translateY(2px); animation: none; }
+  .eggsec[data-drooped="1"] .egg-aura,
+  .eggsec[data-drooped="1"] .egg-ring { opacity: 0 !important; animation: none; }
   /* M4② break-shell celebration on a tier-up (升档破壳) */
   .eggsec { position: relative; }
   .eggsec.celebrating .egg-emo { animation: egg-crack 1.5s var(--ease); }
@@ -380,7 +414,7 @@
     <div class="panel" id="panel" hidden>
       <div class="psec eggsec" id="eggsec" data-drooped="0">
         <div class="eggrow">
-          <span class="egg-emo" id="egg-emo">🥚</span>
+          <span class="egg-orb"><span class="egg-aura"></span><span class="egg-ring"></span><span class="egg-emo" id="egg-emo">🥚</span></span>
           <div class="egg-txt">
             <div class="egg-name" id="egg-name">—</div>
             <div class="egg-sub" id="egg-sub">—</div>

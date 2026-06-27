@@ -118,6 +118,16 @@ web/widget.html   (Telegram 推送)  (终端状态)    (可选·自动烧额度)
 | ☁️ 地仙 | 500M | 🏆 斗战胜佛 | 8B |
 | 🛡️ 天将 | 1B | 🌸 如来佛祖 | 10B (登顶) |
 
+**养成蛋（widget 主页）**：档位 emoji 是一只要你天天喂的电子宠物，吃的就是当天烧量 ——
+
+- 烧得少 → **死气沉沉**：灰暗、塌肩、慢慢下沉，逼你开烧；
+- 烧到中等 → **想升级**：恢复血色、往上够、暖光晕越烧越亮，接近目标时**光环开始成形**（快破壳了）；
+- 烧得多 → **亢奋**：满血发光 + 脉动光晕 + 旋转能量光环 + 自信摆动弹跳；
+- 昨天断顿 → **发蔫**（损失厌恶把你拉回来，读的是「上一个已结算日没达标」而非每天归零的 streak）；
+- 升档 → **破壳庆典 + 自动弹分享**。
+
+全程常驻动画只用 `transform`/`opacity`（GPU 合成、几乎零耗），滤镜静态，面板收起时 `display:none` 不跑。
+
 **指标**（都从本地日志算，卡上带"本地日志核验"防伪标）：
 
 - **生涯累计**（`lifetime.py`）— 独立、永不裁剪的单调累加器（30d 缓存会在 120 天裁剪，撑不起"自第一天"），一次性全量回填 + 每日增量，今日实时值读取时叠加。
@@ -126,9 +136,9 @@ web/widget.html   (Telegram 推送)  (终端状态)    (可选·自动烧额度)
 - **连续达标 streak / 单日峰值 / 周环比增长** — 卡上徽章。
 - **在线时长 / 最长连续在线**（`history.daily_active_minutes` 合并双工具时间线 + `continuity.py`）— **仅面板**，标"在线/活跃"而非"开发"（idle-gap 代理会被后台自动化括大，不上公开卡以保可信度）。
 
-**排名诚实**：全球百分比要有真实用户池（≥200）才显示 "Top X%"；在那之前卡片只显示**对比你自己**（历史巅峰 / 最佳30天）+ **创始操作者 #1**，**绝不编造百分比**。
+**全球烧量榜（opt-in）**：一个共享榜（Cloudflare Worker + D1，已上线）。默认**只在本地、零上传**；在 widget 设置里勾选「加入排名」即视为同意，才把你的 handle + 30d/生涯烧量提交，和其他同意者一起排名。小池子（你 + 几个朋友）直接显示真实对位「烧量榜 第 N / total 名」；满 200 人才升级成「全球榜 + Top X%」。
 
-> **路线图**：可选的全球排行榜 + 朋友对比（Cloudflare Worker + D1，朋友邀请码几人即可玩）已设计完成，等准备分发时再部署。
+**排名诚实**：池子不够大（<200）绝不编造百分比 —— 卡片只显示**对比你自己**（历史巅峰 / 最佳30天）+ **创始操作者 #1**。无防伪造设计（按需保持简单）。
 
 ## 快速开始
 
@@ -168,6 +178,7 @@ pipx install .          # 之后直接 `tokenpulse` / `tokenpulse-nudge`
 | 真实 session/weekly 额度 | Codex 直读本地；Claude 经可选 CodexBar；带重置倒计时 + 周配速 | ✅ |
 | today/30d cost + tokens + 缓存命中 | models.dev 单价**直连**，新模型家族回退 | ✅ |
 | **🐵 西游记档位 + 徽章** | 按月用量孵化 8 档（石猴→如来），多维徽章（`badges.py`） | ✅ |
+| **🥚 养成蛋（3 段情绪）** | 档位宠物随当天烧量 死气沉沉→想升级→亢奋；断顿发蔫；升档破壳庆典 + 自动分享（纯 transform/opacity） | ✅ |
 | **可分享竖版战绩卡** | 小红书 3:4、竖向天梯、SF Compact + 思源黑体、顶部 X 身份 + 页脚 builder CTA（`card.py`） | ✅ |
 | **单日纪录卡** | 单日最高 token 记录独立 PNG；widget 里“最高日 … 晒”直接生成分享页 | ✅ |
 | **QR 分享页** | 分享按钮生成 PNG + 移动分享页 QR；有 `cloudflared` 时走临时 HTTPS（系统分享 + `og:image` 让 X 展开卡片），否则绑 LAN（手机同 wifi 可扫开、保存图片）| ✅ |
@@ -178,7 +189,7 @@ pipx install .          # 之后直接 `tokenpulse` / `tokenpulse-nudge`
 | Telegram 鞭策 | 落后 pace 或周额度没跟上时推 | ✅ |
 | 终端 CLI | `--json` / `--sessions` | ✅ |
 | furnace 自动烧额度 | 落后时无人值守派一个队列/循环作业给更落后的 plan | ⚙️ 默认关闭 |
-| 全球排行榜 + 朋友对比 | Cloudflare Worker + D1，已设计；待分发时部署 | 🗺️ 路线图 |
+| **全球烧量榜（opt-in）** | 共享 Cloudflare Worker + D1（已上线）；设置勾选「加入排名」才上传；小池子显示真实对位，≥200 人才出 Top X% | ✅ |
 
 ## 技术栈
 
@@ -205,7 +216,7 @@ tokenpulse/
 ├── peaks.py           # 单次会话峰值扫描
 ├── continuity.py      # 最长连续在线（合并时间线，30min 断点）
 ├── history.py         # 30d token 序列 + 连续达标 + 合并在线时长（含磁盘缓存）
-├── configio.py        # 设置面板可编辑子集的读/校验/写（targets / handle / xhs_id）
+├── configio.py        # 设置面板可编辑子集的读/校验/写（targets / handle / xhs_id / 排名 consent）
 │   ── 出口 ──
 ├── sessions.py        # 最近 5 天会话 →「去 resume 这个」
 ├── webdata.py         # 合并 core/limits/cost → widget 的 JSON 桥
@@ -219,7 +230,7 @@ tokenpulse/
 ├── config.json        # 你的本地实例（gitignore，不入库）：目标 / 署名 / 阈值 / furnace
 ├── install.sh / uninstall.sh  # launchd 常驻装/卸（含装依赖 + 首跑配置）
 ├── pyproject.toml     # 打包：pipx 装全局 `tokenpulse` / `tokenpulse-nudge` 命令
-└── tests/             # pytest（99 passing）
+└── tests/             # pytest（153 passing）
 ```
 
 ## 配置
@@ -233,6 +244,7 @@ tokenpulse/
 | `xhs_id` | 当前用户小红书号（保留给设置/数据；公开卡顶部不再显示） | `""` |
 | `builder` | 卡片页脚 builder CTA（X handle / 红书 ID / 抖音 ID / QR URL） | `xparkzz` |
 | `share` | QR 分享页设置（cloudflared/local/base_url/端口） | 临时 cloudflared |
+| `ranking` | 全球烧量榜：`enabled`（设置里勾「加入排名」才 true）+ `url`（共享榜地址，出厂已填） | 默认关 |
 | `active_window` | pace 配速窗口；`00:00–00:00` = 整 24h（按本地时区） | `00:00–00:00` |
 | `day_boundary` | 日界：`local`（你的时区）或 `utc` | `local` |
 | `checkpoints` | Telegram 推送时间点 | `15:00 / 20:00 / 23:00` |

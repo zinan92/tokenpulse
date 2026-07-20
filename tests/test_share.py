@@ -6,6 +6,11 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 import share  # noqa: E402
 
 
+def _fake_ensure_server(root, port):
+    root.mkdir(parents=True, exist_ok=True)
+    return int(port or 8765)
+
+
 def test_qr_data_uri_is_png():
     uri = share.qr_data_uri("https://example.com/tokenpulse", pixels=96)
     assert uri.startswith("data:image/png;base64,")
@@ -27,6 +32,7 @@ def test_is_private_lan_ranges():
 
 def test_build_share_payload_uses_reachable_lan_url(tmp_path, monkeypatch):
     monkeypatch.setattr(share, "_lan_ip", lambda: "192.168.1.77")  # deterministic LAN IP
+    monkeypatch.setattr(share, "_ensure_server", _fake_ensure_server)
     card = tmp_path / "card.png"
     card.write_bytes(b"fake-png")
     cfg = {
@@ -42,7 +48,8 @@ def test_build_share_payload_uses_reachable_lan_url(tmp_path, monkeypatch):
     payload = share.build_share_payload(card, config=cfg, root=tmp_path / "share", start_tunnel=False)
 
     # the QR must point at a LAN IP a phone can reach — never localhost (dead link on a phone)
-    assert payload["url"].startswith("http://192.168.1.77:")
+    assert payload["url"] == f"http://192.168.1.77:8765/{payload['share_id']}/"
+    assert payload["local_url"] == payload["url"]
     assert payload["reachable"] == "lan"
     assert payload["https"] is False
     assert payload["qr"].startswith("data:image/png;base64,")
@@ -62,16 +69,19 @@ def test_build_share_payload_uses_reachable_lan_url(tmp_path, monkeypatch):
 
 def test_build_share_payload_local_fallback_when_offline(tmp_path, monkeypatch):
     monkeypatch.setattr(share, "_lan_ip", lambda: None)  # no network → loopback (honest)
+    monkeypatch.setattr(share, "_ensure_server", _fake_ensure_server)
     card = tmp_path / "card.png"
     card.write_bytes(b"x")
     cfg = {"builder": {}, "share": {"mode": "local", "port": 0, "base_url": ""}}
     payload = share.build_share_payload(card, config=cfg, root=tmp_path / "share", start_tunnel=False)
-    assert payload["url"].startswith("http://127.0.0.1:")
+    assert payload["url"] == f"http://127.0.0.1:8765/{payload['share_id']}/"
+    assert payload["local_url"] == payload["url"]
     assert payload["reachable"] == "local"
 
 
 def test_build_share_payload_accepts_record_card_copy(tmp_path, monkeypatch):
     monkeypatch.setattr(share, "_lan_ip", lambda: "192.168.1.77")
+    monkeypatch.setattr(share, "_ensure_server", _fake_ensure_server)
     card = tmp_path / "record.png"
     card.write_bytes(b"record-png")
     cfg = {"builder": {}, "share": {"mode": "local", "port": 0, "base_url": ""}}

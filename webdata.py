@@ -28,6 +28,25 @@ def _state(mood: str) -> str:
             "done": "hit", "rocket": "rocket"}.get(mood, "ontrack")
 
 
+def _operator_line(st: dict) -> str:
+    tools = list(st["tools"].values())
+    remaining = core.humanize(st["combined"]["remaining"])
+    if all(t["hit"] for t in tools):
+        return "complete - daily target is done; choose the next AI-work session by priority."
+    if any(t["mood"] == "behind" for t in tools):
+        return f"behind - start the next AI-work session now to catch up; {remaining} tokens remain today."
+    return f"on track - keep the next AI-work session aligned to priority; {remaining} tokens remain today."
+
+
+def _impact_line(st: dict) -> str:
+    tools = list(st["tools"].values())
+    if all(t["hit"] for t in tools):
+        return "priority decides because today's token target is done."
+    if any(t["mood"] == "behind" for t in tools):
+        return "turn lag into useful AI-work before the day slips."
+    return "stay on the priority session while runway is healthy."
+
+
 def core_payload(now: datetime | None = None, config: dict | None = None) -> dict:
     now = now or datetime.now().astimezone()
     config = config or core.load_config()
@@ -80,6 +99,8 @@ def core_payload(now: datetime | None = None, config: dict | None = None) -> dic
             "state": state,
             "hit": p["hit"],
             "pace_ratio": round(c["today"] / expected, 2) if expected else None,
+            "operator": _operator_line(st),
+            "impact": _impact_line(st),
         },
         "tools": tools,
     }

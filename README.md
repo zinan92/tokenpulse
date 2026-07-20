@@ -17,14 +17,15 @@
 in   本地日志  ~/.claude/projects/**/*.jsonl (Claude) + ~/.codex/sessions/**/*.jsonl (Codex)
    + models.dev 单价表 (直连, 每日本地缓存)   [CodexBar 可选: 仅 Claude 的 session/weekly %]
 
-out  常驻桌面 goad widget + Telegram 鞭策推送 + CLI 状态 + 可分享竖版战绩卡 (PNG)
+out  常驻桌面 goad widget + Telegram 鞭策推送 + CLI 状态 + 可分享竖版战绩卡/单日纪录卡 (PNG + QR 分享页)
    鞭策面: 今日 token vs 150M/天目标 · pace 配速 · session/weekly 剩余额度 · today/30d cost
-   战绩面: 西游记档位 · 生涯累计 · 单会话峰值 · 缓存命中率 · 徽章 · 双署名 (X + 小红书号)
+   战绩面: 西游记档位 · 生涯累计 · 单日峰值 · 单会话峰值 · 缓存命中率 · 徽章 · 顶部 X 身份 · 页脚 builder CTA
 
 fail CodexBar 未运行 / 数据 >6h 旧  → Claude 额度显示 "—" / ⚠stale,其余照常工作
 fail 模型不在价格表 (如新出的 claude-opus-4-8)  → 家族回退到最新同族费率,而非算成 $0
 fail Telegram 凭证缺失  → 跳过推送,不报错
 fail lifetime/peak 全量回填未完成  → 战绩卡先用今日值,后台扫完即补
+fail cloudflared 不可用 / HTTPS tunnel 未拿到  → 降级到本地分享页 + Finder, 不假装手机可公网访问
 ```
 
 `CodexBar 是里程表（只报原始数字）；TokenPulse 是教练 + 成长系统 —— 把数字对着每日目标算配速、落后时扎你一下，再把累计用量变成一张让你想晒的战绩卡。`
@@ -34,6 +35,10 @@ fail lifetime/peak 全量回填未完成  → 战绩卡先用今日值,后台扫
 桌面 widget（无边框、置顶、可拖动）。**整个表面随用量变情绪**：落后变冷蓝并扎心文案，超额变炽热发光。
 
 ![TokenPulse widget](./screenshots/widget.png)
+
+竖版战绩卡（小红书 3:4）。顶部只放 X 身份；页脚保留 TokenPulse QR 和 builder 账号入口，用 icon + number 降低打扰感。
+
+![TokenPulse card](./screenshots/card.png)
 
 终端状态：
 
@@ -77,14 +82,14 @@ resume [codex] 整理GitHub仓库三条管线 · 6h ago
    │  成长系统:  history.py 30d 序列 + 连续达标 + 在线时长                   │
    │            lifetime.py 永不裁剪生涯累计 + 单会话峰值 (peaks.py)         │
    │            continuity.py 最长连续在线   badges.py 西游记档位 + 徽章      │
-   │            card.py 竖版战绩卡 PNG (Pillow)                            │
+   │            card.py 竖版战绩卡 PNG (Pillow) + builder QR/CTA            │
    └───────────────────────┬──────────────────────────────────────────┘
                            ▼  webdata.py  (合并成一个 payload)
    ┌───────────────┬───────────────┬──────────────┬───────────────┐
    ▼               ▼               ▼              ▼
 webwidget.py      nudge.py        cli.py        furnace.py
 web/widget.html   (Telegram 推送)  (终端状态)    (可选·自动烧额度)
-常驻 goad widget + 战绩卡按钮                      fuel.py (取料)
+常驻 goad widget + 战绩卡/QR 分享按钮              fuel.py (取料)
 ```
 
 数据口径逐字段验证：
@@ -97,6 +102,13 @@ web/widget.html   (Telegram 推送)  (终端状态)    (可选·自动烧额度)
 
 把累计用量做成"养电子宠物"式的成长系统，再变成一张**让你想晒**的竖版战绩卡（小红书 3:4）。核心理念：**卡片替你吹牛** —— 一眼读到的是档位名 + 排名，而不是数字；金额降到脚注；用量被框成"操作规模"而非"花了多少钱"。
 
+分享逻辑是两层：
+
+- **PNG 本身可转发**：卡片页脚内置 TokenPulse QR，扫码进入 `https://park-ai-intel.com/tokenpulse`；builder 入口以 X / 红书 / 抖音 icon + ID 呈现。
+- **Widget 分享按钮**：本地生成月度战绩卡 PNG，同时生成一个手机可扫的分享页 QR；有 `cloudflared` 时临时开 HTTPS，手机打开后可走系统分享面板，拿不到 tunnel 时降级为本地页面 + Finder。
+- **单日纪录卡**：展开 widget 详情面板，点“最高日 … 晒”，会生成独立的 `TokenPulse 单日纪录卡` 分享页和 `tokenpulse-record-card.png`。
+- **每日本地快照**：`install.sh` 会安装 `com.tokenpulse.card-snapshot`，每天北京时间 `12:00` 自动保存月度战绩卡 + 单日纪录卡到 `.card-out/daily-snapshots/YYYY-MM-DD/`。
+
 **西游记档位**（按月滚动 token 孵化，`badges.py`）：
 
 | 档位 | 阈值/月 | 档位 | 阈值/月 |
@@ -106,6 +118,16 @@ web/widget.html   (Telegram 推送)  (终端状态)    (可选·自动烧额度)
 | ☁️ 地仙 | 500M | 🏆 斗战胜佛 | 8B |
 | 🛡️ 天将 | 1B | 🌸 如来佛祖 | 10B (登顶) |
 
+**养成蛋（widget 主页）**：档位 emoji 是一只要你天天喂的电子宠物，吃的就是当天烧量 ——
+
+- 烧得少 → **死气沉沉**：灰暗、塌肩、慢慢下沉，逼你开烧；
+- 烧到中等 → **想升级**：恢复血色、往上够、暖光晕越烧越亮，接近目标时**光环开始成形**（快破壳了）；
+- 烧得多 → **亢奋**：满血发光 + 脉动光晕 + 旋转能量光环 + 自信摆动弹跳；
+- 昨天断顿 → **发蔫**（损失厌恶把你拉回来，读的是「上一个已结算日没达标」而非每天归零的 streak）；
+- 升档 → **破壳庆典 + 自动弹分享**。
+
+全程常驻动画只用 `transform`/`opacity`（GPU 合成、几乎零耗），滤镜静态，面板收起时 `display:none` 不跑。
+
 **指标**（都从本地日志算，卡上带"本地日志核验"防伪标）：
 
 - **生涯累计**（`lifetime.py`）— 独立、永不裁剪的单调累加器（30d 缓存会在 120 天裁剪，撑不起"自第一天"），一次性全量回填 + 每日增量，今日实时值读取时叠加。
@@ -114,30 +136,37 @@ web/widget.html   (Telegram 推送)  (终端状态)    (可选·自动烧额度)
 - **连续达标 streak / 单日峰值 / 周环比增长** — 卡上徽章。
 - **在线时长 / 最长连续在线**（`history.daily_active_minutes` 合并双工具时间线 + `continuity.py`）— **仅面板**，标"在线/活跃"而非"开发"（idle-gap 代理会被后台自动化括大，不上公开卡以保可信度）。
 
-**排名诚实**：全球百分比要有真实用户池（≥200）才显示 "Top X%"；在那之前卡片只显示**对比你自己**（历史巅峰 / 最佳30天）+ **创始操作者 #1**，**绝不编造百分比**。
+**全球烧量榜（opt-in）**：一个共享榜（Cloudflare Worker + D1，已上线）。默认**只在本地、零上传**；在 widget 设置里勾选「加入排名」即视为同意，才把你的 handle + 30d/生涯烧量提交，和其他同意者一起排名。小池子（你 + 几个朋友）直接显示真实对位「烧量榜 第 N / total 名」；满 200 人才升级成「全球榜 + Top X%」。
 
-> **路线图**：可选的全球排行榜 + 朋友对比（Cloudflare Worker + D1，朋友邀请码几人即可玩）已设计完成，等准备分发时再部署。
+**排名诚实**：池子不够大（<200）绝不编造百分比 —— 卡片只显示**对比你自己**（历史巅峰 / 最佳30天）+ **创始操作者 #1**。无防伪造设计（按需保持简单）。
 
 ## 快速开始
+
+**前置**：macOS · `python3 ≥ 3.11`。可选：`cloudflared`（分享走临时 HTTPS）、CodexBar（补 Claude 的 session/weekly %）。
 
 ```bash
 # 1. 克隆
 git clone https://github.com/zinan92/tokenpulse.git
 cd tokenpulse
 
-# 2. 依赖：core/cli/nudge 纯 stdlib；web widget 需要 pywebview，战绩卡需要 Pillow
-pip3 install --user pywebview Pillow
+# 2. 一键安装：装依赖 + 首次从 config.example.json 生成 config.json + 装成 launchd 常驻
+#    （widget 开机自启 / 崩溃重拉，Telegram 定时鞭策 / 北京时间 12:00 本地保存两张卡片）
+./install.sh
+#    然后在 widget 的「设置」面板填上你的 X / 小红书号（战绩卡署名）；卡片页脚的
+#    builder CTA 是作者署名，跟着每张卡走，不用你管。
 
-# 3. 终端看今日状态（最轻量，零额外依赖）
-python3 cli.py
+# —— 或者手动跑（不装常驻）——
+pip3 install -r requirements.txt
+python3 cli.py          # 终端看今日状态（最轻量，core/cli 纯 stdlib）
+python3 webwidget.py    # 桌面 goad widget（无边框置顶，可拖动）
+python3 daily_snapshot.py --force  # 立刻保存今天的月度战绩卡 + 单日纪录卡
 
-# 4. 启动桌面 goad widget（无边框置顶，可拖动）
-python3 webwidget.py
-
-# 5. (可选) 装成 launchd 常驻 + Telegram 定时鞭策
-#    见 com.tokenpulse.{widget,nudge} 两个 LaunchAgent
+# —— 只想要终端命令？装个全局 CLI（纯 stdlib，零重依赖）——
+pipx install .          # 之后直接 `tokenpulse` / `tokenpulse-nudge`
 ```
 
+> 桌面 widget 自带 `web/` UI + launchd，所以走 `./install.sh`（从 checkout 跑）；`pipx` 只装终端 `tokenpulse` 命令。
+>
 > **CodexBar 可选**（[steipete/codexbar](https://github.com/steipete/codexbar)）：只用于 **Claude** 的 session/weekly % 那两栏。没装也能跑——token、cost、Codex 额度全部正常，Claude 额度那两栏显示 `—`。
 
 ## 功能一览
@@ -149,21 +178,25 @@ python3 webwidget.py
 | 真实 session/weekly 额度 | Codex 直读本地；Claude 经可选 CodexBar；带重置倒计时 + 周配速 | ✅ |
 | today/30d cost + tokens + 缓存命中 | models.dev 单价**直连**，新模型家族回退 | ✅ |
 | **🐵 西游记档位 + 徽章** | 按月用量孵化 8 档（石猴→如来），多维徽章（`badges.py`） | ✅ |
-| **可分享竖版战绩卡** | 小红书 3:4、竖向天梯、SF Compact + 思源黑体、双署名（`card.py`） | ✅ |
+| **🥚 养成蛋（3 段情绪）** | 档位宠物随当天烧量 死气沉沉→想升级→亢奋；断顿发蔫；升档破壳庆典 + 自动分享（纯 transform/opacity） | ✅ |
+| **可分享竖版战绩卡** | 小红书 3:4、竖向天梯、SF Compact + 思源黑体、顶部 X 身份 + 页脚 builder CTA（`card.py`） | ✅ |
+| **单日纪录卡** | 单日最高 token 记录独立 PNG；widget 里“最高日 … 晒”直接生成分享页 | ✅ |
+| **QR 分享页** | 分享按钮生成 PNG + 移动分享页 QR；有 `cloudflared` 时走临时 HTTPS（系统分享 + `og:image` 让 X 展开卡片），否则绑 LAN（手机同 wifi 可扫开、保存图片）| ✅ |
+| **每日卡片快照** | `daily_snapshot.py` + launchd，每天北京时间 12:00 本地保存月度战绩卡和单日纪录卡 | ✅ |
 | **生涯累计 / 单会话峰值** | 永不裁剪的单调累加器（`lifetime.py` / `peaks.py`） | ✅ |
 | 在线时长 / 最长连续在线 | 合并双工具时间线（`history` / `continuity.py`）— 仅面板 | ✅ |
 | goad widget (web) | 暗色、drenched 状态反应、count-up、达标 flare、详情面板 + 战绩卡按钮 | ✅ |
 | Telegram 鞭策 | 落后 pace 或周额度没跟上时推 | ✅ |
 | 终端 CLI | `--json` / `--sessions` | ✅ |
 | furnace 自动烧额度 | 落后时无人值守派一个队列/循环作业给更落后的 plan | ⚙️ 默认关闭 |
-| 全球排行榜 + 朋友对比 | Cloudflare Worker + D1，已设计；待分发时部署 | 🗺️ 路线图 |
+| **全球烧量榜（opt-in）** | 共享 Cloudflare Worker + D1（已上线）；设置勾选「加入排名」才上传；小池子显示真实对位，≥200 人才出 Top X% | ✅ |
 
 ## 技术栈
 
 | 层级 | 技术 | 用途 |
 |------|------|------|
 | 引擎 | Python 3.13 **纯 stdlib** | 日志提取、目标/配速、成本、档位/徽章/累计（core/cost/limits/badges/lifetime/… 零依赖） |
-| 战绩卡 | `Pillow` | 渲染竖版 PNG（思源黑体兜底 CJK，SF Compact Black 大字） |
+| 战绩卡 / QR | `Pillow` + `qrcode` | 渲染竖版 PNG、builder QR、手机分享页 QR |
 | Widget UI | `pywebview` (Cocoa WebKit) + HTML/CSS/JS | 无边框置顶 goad 窗口，~100–200MB，远轻于 Electron |
 | 数据源 | 本地日志 + models.dev (直连) | 本机零外部依赖；CodexBar 仅可选地补 Claude 额度 |
 | 常驻 | macOS `launchd` (framework python) | widget + nudge 两个 LaunchAgent |
@@ -178,40 +211,47 @@ tokenpulse/
 ├── limits.py          # session/weekly 额度（Codex 本地 / Claude 经可选 CodexBar）
 │   ── 成长系统 ──
 ├── badges.py          # 西游记档位 + 多维徽章 + card_data()（卡片/面板唯一数据源）
-├── card.py            # 竖版战绩卡 PNG（Pillow）
+├── card.py            # 竖版战绩卡 PNG（Pillow）+ builder CTA/QR
 ├── lifetime.py        # 永不裁剪的生涯累计 + 单会话峰值（schema v2）
 ├── peaks.py           # 单次会话峰值扫描
 ├── continuity.py      # 最长连续在线（合并时间线，30min 断点）
 ├── history.py         # 30d token 序列 + 连续达标 + 合并在线时长（含磁盘缓存）
-├── configio.py        # 设置面板可编辑子集的读/校验/写（targets / 双 handle）
+├── configio.py        # 设置面板可编辑子集的读/校验/写（targets / handle / xhs_id / 排名 consent）
 │   ── 出口 ──
 ├── sessions.py        # 最近 5 天会话 →「去 resume 这个」
 ├── webdata.py         # 合并 core/limits/cost → widget 的 JSON 桥
 ├── webwidget.py       # pywebview 宿主（无边框置顶）+ 战绩卡/设置 API
 ├── web/widget.html    # goad UI：状态反应配色 + 动效 + 详情面板（自包含）
+├── share.py           # 战绩卡分享页、QR、临时 cloudflared HTTPS tunnel
 ├── nudge.py           # Telegram 鞭策（落后时）
 ├── furnace.py / fuel.py   # 可选：无人值守自动烧额度
 ├── cli.py             # 终端状态
-├── config.json        # 目标 / 署名 / checkpoints / 阈值 / furnace 开关
-└── tests/             # pytest（95 passing）
+├── config.example.json # 出厂模板（owner 字段留空）；install.sh 首次拷成 config.json
+├── config.json        # 你的本地实例（gitignore，不入库）：目标 / 署名 / 阈值 / furnace
+├── install.sh / uninstall.sh  # launchd 常驻装/卸（含装依赖 + 首跑配置）
+├── pyproject.toml     # 打包：pipx 装全局 `tokenpulse` / `tokenpulse-nudge` 命令
+└── tests/             # pytest（153 passing）
 ```
 
 ## 配置
 
-`config.json`：
+`config.json` 由 `install.sh` 首次从 `config.example.json` 生成（owner 字段留空），**不入库**——所以克隆下来的是干净模板，署名是你自己的，不是作者的。`builder` 那块是写死的作者署名（页脚 CTA），不在这里改。字段：
 
 | 字段 | 说明 | 默认 |
 |------|------|------|
 | `targets.{claude,codex}.{weekday,weekend}` | 每日 token 目标（百万） | `150` |
-| `handle` | 战绩卡 X 署名（空则回退 git 用户名 / `you`） | `""` |
-| `xhs_id` | 战绩卡小红书号（RED ID，空则不显示） | `""` |
+| `handle` | 战绩卡顶部 X handle（空则回退 git 用户名 / `you`） | `""` |
+| `xhs_id` | 当前用户小红书号（保留给设置/数据；公开卡顶部不再显示） | `""` |
+| `builder` | 卡片页脚 builder CTA（X handle / 红书 ID / 抖音 ID / QR URL） | `xparkzz` |
+| `share` | QR 分享页设置（cloudflared/local/base_url/端口） | 临时 cloudflared |
+| `ranking` | 全球烧量榜：`enabled`（设置里勾「加入排名」才 true）+ `url`（共享榜地址，出厂已填） | 默认关 |
 | `active_window` | pace 配速窗口；`00:00–00:00` = 整 24h（按本地时区） | `00:00–00:00` |
 | `day_boundary` | 日界：`local`（你的时区）或 `utc` | `local` |
 | `checkpoints` | Telegram 推送时间点 | `15:00 / 20:00 / 23:00` |
 | `plan_behind_threshold` | 周额度落后多少个百分点才算"落后"并触发推送 | `10` |
 | `furnace.enabled` | 自动烧额度总开关（kill switch） | `false` |
 
-> `handle` / `xhs_id` 也能在 widget 详情面板的「设置」里直接填。
+> `handle` / `xhs_id` 也能在 widget 详情面板的「设置」里直接填；公开卡顶部只展示 X handle，页脚 builder CTA 使用 icon + ID。
 
 
 
@@ -226,7 +266,7 @@ name: tokenpulse
 capability:
   summary: Track daily token usage across Claude Code + Codex subscription plans, goad the user to use more, and turn cumulative usage into a shareable leveling card.
   in: local logs (~/.claude/projects, ~/.codex/sessions) + models.dev prices (direct). CodexBar optional (only Claude's session/weekly %).
-  out: always-on-top "goad" desktop widget + Telegram nudges + CLI status (today tokens vs target, pace, session/weekly %, cost) + a shareable portrait "战绩卡" PNG (西游记 tier + lifetime total + single-session peak + cache hit-rate + badges)
+  out: always-on-top "goad" desktop widget + Telegram nudges + CLI status (today tokens vs target, pace, session/weekly %, cost) + shareable portrait PNG cards (monthly 战绩卡 + single-day record card)
   fail:
     - "CodexBar not running / data >6h stale → plan limits show — / ⚠stale; token tracking still works"
     - "model missing from price table → family fallback to latest sibling's rate (not $0)"
@@ -240,9 +280,9 @@ cli_flags:
   - name: --sessions
     type: boolean
     description: list recent resumable Claude/Codex sessions
-programmatic_entry: "import webdata; webdata.core_payload()  # goal/pace/limits · webdata.cost_payload() cost · import badges; badges.card_data() tier/lifetime/badges · import card; card.make_card() render PNG"
-install_command: "pip3 install --user pywebview Pillow   # pywebview for the widget, Pillow for the card; core/cli/nudge are stdlib"
-start_command: "python3 webwidget.py   # widget  ·  python3 cli.py   # status  ·  python3 nudge.py   # telegram"
+programmatic_entry: "import webdata; webdata.core_payload()  # goal/pace/limits · webdata.cost_payload() cost · import badges; badges.card_data() tier/lifetime/badges · import card; card.make_card()/make_record_card() render PNG · import daily_snapshot; daily_snapshot.snapshot_cards() local snapshots · import share; share.build_share_payload(path) QR/share page"
+install_command: "./install.sh   # deps + first-run config + launchd widget/nudge/card-snapshot   ·   or: pipx install .   # global `tokenpulse` CLI (stdlib only)"
+start_command: "python3 webwidget.py   # widget  ·  python3 cli.py   # status  ·  python3 nudge.py   # telegram  ·  python3 daily_snapshot.py --force   # save both cards now"
 requires: "nothing external for core (tokens/cost via models.dev, Codex limits local); CodexBar optional, only for Claude's session/weekly %"
 ```
 

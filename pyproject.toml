@@ -1,0 +1,47 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "tokenpulse"
+version = "0.1.0"
+description = "A desktop coach that goads you to burn your daily LLM token quota — 西游记 leveling + a shareable 战绩卡."
+readme = "README.md"
+requires-python = ">=3.11"
+authors = [{ name = "xparkzz" }]
+keywords = ["claude-code", "codex", "tokens", "usage", "macos", "widget", "goad"]
+classifiers = [
+  "License :: Other/Proprietary License",
+  "Operating System :: MacOS :: MacOS X",
+  "Programming Language :: Python :: 3",
+  "Environment :: MacOS X",
+]
+# The CLI/nudge are pure stdlib. The card (and daily_snapshot, which renders it)
+# need Pillow+qrcode; the desktop widget additionally needs pywebview AND the
+# repo's web/ UI, so both are run from a checkout (./install.sh), not pip-installed
+# — see README.
+dependencies = []
+
+[project.optional-dependencies]
+card = ["Pillow>=10.1", "qrcode[pil]>=7"]
+widget = ["pywebview>=4", "Pillow>=10.1", "qrcode[pil]>=7"]
+
+[project.scripts]
+# Only the pure-stdlib entry points are exposed as console scripts. daily_snapshot
+# needs the `card` extra (Pillow+qrcode), so it's run from the checkout / launchd
+# agent (python3 daily_snapshot.py), not as a pip console script that would
+# ImportError without extras. It stays importable via py-modules below.
+tokenpulse = "cli:main"
+tokenpulse-nudge = "nudge:main"
+
+[project.urls]
+Homepage = "https://github.com/zinan92/tokenpulse"
+Builder = "https://park-ai-intel.com/tokenpulse"
+
+[tool.setuptools]
+# flat layout: the logic + CLI + card/share modules (no web/ data, no GUI host)
+py-modules = [
+  "core", "cost", "limits", "badges", "card", "lifetime", "peaks",
+  "continuity", "history", "configio", "sessions", "webdata",
+  "nudge", "cli", "share", "daily_snapshot", "fuel", "furnace",
+]

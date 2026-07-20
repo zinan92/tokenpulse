@@ -285,11 +285,30 @@ DEFAULT_CONFIG = {
         "claude": {"weekday": 150, "weekend": 150},
         "codex": {"weekday": 150, "weekend": 150},
     },
+    # which LLM vendors to track (see providers.py REGISTRY). claude + codex read
+    # local logs; api providers (glm/deepseek/…) need a key in providers.keys.
+    "providers": {
+        "enabled": ["claude", "codex"],
+        "keys": {},  # {"glm": "id.secret", "deepseek": "sk-…", …}
+    },
     "handle": "",  # your X/Twitter @handle for the share card (blank -> git user / "you")
     "xhs_id": "",  # your 小红书号 (RED ID) for the share card (blank -> hidden)
     "checkpoints": ["15:00", "20:00", "23:00"],
     "plan_behind_threshold": 10,
     "telegram": {"enabled": True},
+    "builder": {
+        "handle": "xparkzz",
+        "xhs_id": "337506137",
+        "douyin_id": "1212207022",
+        "url": "https://park-ai-intel.com/tokenpulse",
+    },
+    "share": {
+        "mode": "cloudflared",
+        "host": "127.0.0.1",
+        "port": 8765,
+        "base_url": "",
+        "ttl_hours": 24,
+    },
     "furnace": {
         "enabled": False,
         "max_jobs_per_day": 12,

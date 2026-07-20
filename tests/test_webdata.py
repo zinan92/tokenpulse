@@ -41,6 +41,33 @@ def _status():
     }
 
 
+def _ontrack_status():
+    st = _status()
+    st["tools"]["codex"] = _tool(110, 100, "ontrack")
+    st["combined"] = {
+        "today": 230,
+        "target": 1000,
+        "percent": 23.0,
+        "remaining": 770,
+    }
+    return st
+
+
+def _complete_status():
+    return {
+        "tools": {
+            "claude": _tool(500, 400, "done", hit=True),
+            "codex": _tool(500, 400, "done", hit=True),
+        },
+        "combined": {
+            "today": 1000,
+            "target": 1000,
+            "percent": 100.0,
+            "remaining": 0,
+        },
+    }
+
+
 def _patch_core(monkeypatch, *, active_fraction=0.5, combined_mood="ontrack", combined_hit=False):
     monkeypatch.setattr(webdata.core, "status", lambda now, config: _status())
     monkeypatch.setattr(
@@ -133,6 +160,8 @@ def test_core_payload_shape_and_available_plan_fields(monkeypatch):
         "state": "ontrack",
         "hit": False,
         "pace_ratio": 0.57,
+        "operator": "behind - start the next AI-work session now to catch up; 830 tokens remain today.",
+        "impact": "turn lag into useful AI-work before the day slips.",
     }
 
 
@@ -172,6 +201,61 @@ def test_core_payload_combined_state_is_early_before_active_window(monkeypatch):
     assert payload["active_fraction"] == 0
     assert payload["combined"]["hit"] is False
     assert payload["combined"]["state"] == "early"
+
+
+def test_core_payload_operator_and_impact_for_ontrack_state(monkeypatch):
+    monkeypatch.setattr(webdata.core, "status", lambda now, config: _ontrack_status())
+    monkeypatch.setattr(
+        webdata.core,
+        "pace",
+        lambda now, config, actual, target: {"mood": "ontrack", "hit": False},
+    )
+    monkeypatch.setattr(webdata.core, "_active_fraction", lambda now, config: 0.5)
+    monkeypatch.setattr(
+        webdata.limits,
+        "plan_limits",
+        lambda: {
+            "claude": {"available": False, "windows": []},
+            "codex": {"available": False, "windows": []},
+        },
+    )
+
+    payload = webdata.core_payload(now=NOW, config=CONFIG)
+
+    assert payload["combined"]["operator"] == (
+        "on track - keep the next AI-work session aligned to priority; "
+        "770 tokens remain today."
+    )
+    assert payload["combined"]["impact"] == (
+        "stay on the priority session while runway is healthy."
+    )
+
+
+def test_core_payload_operator_and_impact_for_complete_state(monkeypatch):
+    monkeypatch.setattr(webdata.core, "status", lambda now, config: _complete_status())
+    monkeypatch.setattr(
+        webdata.core,
+        "pace",
+        lambda now, config, actual, target: {"mood": "done", "hit": True},
+    )
+    monkeypatch.setattr(webdata.core, "_active_fraction", lambda now, config: 0.5)
+    monkeypatch.setattr(
+        webdata.limits,
+        "plan_limits",
+        lambda: {
+            "claude": {"available": False, "windows": []},
+            "codex": {"available": False, "windows": []},
+        },
+    )
+
+    payload = webdata.core_payload(now=NOW, config=CONFIG)
+
+    assert payload["combined"]["operator"] == (
+        "complete - daily target is done; choose the next AI-work session by priority."
+    )
+    assert payload["combined"]["impact"] == (
+        "priority decides because today's token target is done."
+    )
 
 
 def test_cost_payload_rounds_costs_and_preserves_token_counts(monkeypatch):

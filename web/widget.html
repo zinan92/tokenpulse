@@ -131,6 +131,23 @@
   .goad .hot { color: var(--heat); }
   .goad .cold { color: var(--alarm); font-weight: 600; }
   body[data-state="behind"] .goad { animation: breathe 3s ease-in-out infinite; }
+  .ops-strip {
+    margin-top: 8px;
+    display: grid;
+    gap: 3px;
+    font-size: 10.5px;
+    line-height: 1.3;
+    color: var(--ink-faint);
+  }
+  .ops-strip div {
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .ops-strip b {
+    color: var(--heat);
+    font-weight: 700;
+  }
 
   /* ── tool rows ── */
   .tools { margin-top: 15px; display: flex; flex-direction: column; gap: 11px; }
@@ -269,6 +286,10 @@
         <div class="pace" id="c-pace"></div>
       </div>
       <div class="goad" id="goad">Reading the furnace…</div>
+      <div class="ops-strip" id="ops-strip">
+        <div><b>Operator</b> <span id="operator-line">—</span></div>
+        <div><b>Impact</b> <span id="impact-line">—</span></div>
+      </div>
     </section>
 
     <div class="tools">
@@ -383,6 +404,8 @@
     $("c-fill").style.width = clamp(c.today / c.target * 100, 0, 100) + "%";
     $("c-pace").style.left = clamp(c.expected / c.target * 100, 0, 100) + "%";
     $("goad").innerHTML = goadFor(c);
+    $("operator-line").textContent = c.operator || "choose the next AI-work session by priority.";
+    $("impact-line").textContent = c.impact || "turn raw quota and pace into a visible next-session choice.";
 
     for (const t of ["claude", "codex"]) {
       const x = d.tools[t];

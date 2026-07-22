@@ -214,7 +214,11 @@
           transition: transform 0.3s var(--ease), color 0.2s, background 0.2s; }
   .chev:hover { color: var(--ink); background: var(--track); }
   .chev.open { transform: rotate(180deg); color: var(--heat); }
-  .panel { margin-top: 13px; padding-top: 12px; border-top: 1px solid var(--track); }
+  .panel { margin-top: 13px; padding: 12px 5px 0 0; border-top: 1px solid var(--track);
+           max-height: 420px; overflow-y: auto; overscroll-behavior: contain;
+           scrollbar-width: thin; scrollbar-color: var(--track) transparent; }
+  .panel::-webkit-scrollbar { width: 6px; }
+  .panel::-webkit-scrollbar-thumb { background: var(--track); border-radius: 999px; }
   .psec { margin-bottom: 13px; }
   .psec:last-child { margin-bottom: 0; }
   .ptitle { font-size: 9.5px; letter-spacing: 0.12em; text-transform: uppercase;
@@ -513,7 +517,7 @@
           <i>菜单栏显示实时摘要；点菜单可临时打开完整面板</i></div>
         <div class="srow"><span class="slbl">追踪厂商</span><i>勾选要统计的厂商；只有 tokens 计入烧量</i></div>
         <div id="s-providers" class="provs"></div>
-        <div class="srow"><button id="s-save">保存</button>
+        <div class="srow"><button id="s-save">保存并重启</button>
           <span id="s-msg" class="smsg"></span></div>
       </div>
     </div>
@@ -914,11 +918,15 @@
     try {
       const r = JSON.parse(await window.pywebview.api.save_config(JSON.stringify(partial)));
       if (r.ok) {
-        msg.textContent = r.restart_required ? "已保存 ✓ 重启后切换展示位置" : "已保存 ✓";
+        msg.textContent = "已保存，正在重启…";
         msg.className = "smsg ok";
         // just consented -> push to the board now so the rank line lights up immediately
         if (consent) { try { await window.pywebview.api.ranking_submit_now(); } catch (e) {} }
-        tick(); tickCost(); loadPanel();      // apply immediately (loadPanel refreshes the rank line)
+        const restart = JSON.parse(await window.pywebview.api.restart_widget());
+        if (!restart.ok) {
+          msg.textContent = "已保存，但重启失败：" + (restart.error || "未知错误");
+          msg.className = "smsg err";
+        }
       } else {
         msg.textContent = "无效: " + (r.errors || []).join(", "); msg.className = "smsg err";
       }

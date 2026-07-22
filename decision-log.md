@@ -28,3 +28,5 @@
   GUI loop, and persist placement changes for the next app launch.
 - Compact mode must never hide the only route back to settings; retain a
   visible control that restores the full widget before opening its panel.
+- An expanded frameless panel must scroll inside a bounded viewport; otherwise
+  content accessibility depends on users discovering an invisible resize edge.

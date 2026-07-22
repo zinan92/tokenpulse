@@ -136,6 +136,40 @@ class Api:
             result["restart_required"] = True
         return json.dumps(result, default=str)
 
+    def restart_widget(self) -> str:
+        """Restart the launchd-managed widget after a successful settings save.
+
+        The API bridge runs inside this process, so schedule the destructive
+        kickstart just after returning the acknowledgement to the webview.
+        """
+        target = f"gui/{os.getuid()}/com.tokenpulse.widget"
+        try:
+            probe = subprocess.run(
+                ["launchctl", "print", target],
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.PIPE,
+                text=True,
+                check=False,
+            )
+        except OSError as exc:
+            return json.dumps({"ok": False, "error": f"无法调用 launchctl: {exc}"})
+        if probe.returncode != 0:
+            return json.dumps({"ok": False, "error": "未找到 TokenPulse 启动服务"})
+
+        def kickstart() -> None:
+            try:
+                subprocess.run(
+                    ["launchctl", "kickstart", "-k", target],
+                    stdout=subprocess.DEVNULL,
+                    stderr=subprocess.DEVNULL,
+                    check=False,
+                )
+            except OSError:
+                pass
+
+        threading.Timer(0.35, kickstart).start()
+        return json.dumps({"ok": True, "restarting": True})
+
     def providers_catalog(self) -> str:
         """All providers + the enabled set + whether each api provider has a key
         (the key value itself is never returned)."""

@@ -16,6 +16,36 @@ def test_widget_exposes_compact_and_menu_bar_display_controls():
     assert 'id="compact-line"' in html
     assert 'id="s-display-mode"' in html
     assert 'id="s-display-placement"' in html
+    assert 'id="compact-settings"' in html
+    assert "openCompactSettings" in html
+
+
+def test_display_mode_change_does_not_require_restart(monkeypatch):
+    api = webwidget.Api()
+    monkeypatch.setattr(webwidget.core, "load_config", lambda: {"display": {"placement": "desktop"}})
+    monkeypatch.setattr(webwidget.configio, "save_partial", lambda partial: {"ok": True, "config": partial})
+
+    mode_only = json.loads(api.save_config(json.dumps({"display": {"mode": "full"}})))
+    placement_same = json.loads(api.save_config(json.dumps({"display": {"placement": "desktop"}})))
+    placement_changed = json.loads(api.save_config(json.dumps({"display": {"placement": "menu_bar"}})))
+
+    assert "restart_required" not in mode_only
+    assert "restart_required" not in placement_same
+    assert placement_changed["restart_required"] is True
+
+
+def test_fit_allows_a_one_line_compact_height():
+    calls = []
+
+    class FakeWindow:
+        def resize(self, width, height):
+            calls.append((width, height))
+
+    api = webwidget.Api()
+    api.window = FakeWindow()
+
+    assert api.fit(34) is True
+    assert calls == [(webwidget.WIDTH, 34)]
 
 
 def test_main_installs_menu_bar_before_starting_gui_loop(monkeypatch):

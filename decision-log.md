@@ -26,3 +26,5 @@
 - `pywebview.start` invokes its startup callback on a worker thread. Creating
   an `NSStatusBar` item there fails; create it from `main()` before starting the
   GUI loop, and persist placement changes for the next app launch.
+- Compact mode must never hide the only route back to settings; retain a
+  visible control that restores the full widget before opening its panel.

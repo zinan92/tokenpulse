@@ -23,3 +23,6 @@
   the controller so CLI/tests do not require AppKit on other platforms.
 - Menu-bar mode hides the desktop widget but its menu must still expose a way
   to open the full settings panel.
+- `pywebview.start` invokes its startup callback on a worker thread. Creating
+  an `NSStatusBar` item there fails; create it from `main()` before starting the
+  GUI loop, and persist placement changes for the next app launch.

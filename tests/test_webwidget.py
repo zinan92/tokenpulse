@@ -18,6 +18,33 @@ def test_widget_exposes_compact_and_menu_bar_display_controls():
     assert 'id="s-display-placement"' in html
 
 
+def test_main_installs_menu_bar_before_starting_gui_loop(monkeypatch):
+    captured = {}
+
+    class FakeWindow:
+        pass
+
+    class FakeMenu:
+        def __init__(self, window):
+            captured["menu_window"] = window
+
+        def _install(self):
+            captured["menu_installed"] = True
+
+    monkeypatch.setattr(webwidget, "_patch_pywebview_cocoa_screen_guard", lambda: None)
+    monkeypatch.setattr(webwidget, "_window_position", lambda: (1, 2))
+    monkeypatch.setattr(webwidget.core, "load_config", lambda: {"display": {"placement": "menu_bar"}})
+    monkeypatch.setattr(webwidget, "MenuBarController", FakeMenu)
+    monkeypatch.setattr(webwidget.webview, "create_window", lambda *args, **kwargs: captured.update(kwargs) or FakeWindow())
+    monkeypatch.setattr(webwidget.webview, "start", lambda func, args: captured.update(start=(func, args)))
+
+    webwidget.main()
+
+    assert captured["hidden"] is True
+    assert captured["menu_installed"] is True
+    assert captured["start"][0] is webwidget._on_start
+
+
 def test_clamp_window_position_keeps_widget_on_primary_screen():
     assert webwidget._clamp_window_position(2200, 48, screen_size=(2560, 1440)) == (2200, 48)
     assert webwidget._clamp_window_position(9999, 9999, screen_size=(2560, 1440)) == (

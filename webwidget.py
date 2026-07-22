@@ -126,15 +126,11 @@ class Api:
         # config.json is re-read on every tick, so the change applies on the next
         # refresh; nothing to invalidate here.
         result = configio.save_partial(partial)
-        if result.get("ok") and self.menu_controller is not None:
-            # pywebview API calls may arrive on a bridge thread; AppKit window
-            # and status-bar changes must land back on the Cocoa main loop.
-            try:
-                from PyObjCTools import AppHelper
-
-                AppHelper.callAfter(self.menu_controller.sync_display)
-            except Exception:  # noqa: BLE001
-                self.menu_controller.sync_display()
+        if result.get("ok") and "display" in partial:
+            # pywebview API calls run off Cocoa's main thread.  Persist the
+            # placement safely now; the next app launch creates/removes the
+            # native status item on the correct thread.
+            result["restart_required"] = True
         return json.dumps(result, default=str)
 
     def providers_catalog(self) -> str:
@@ -302,43 +298,20 @@ class MenuBarController:
     def _install(self) -> None:
         if self.item is not None:
             return
-        from AppKit import NSMenu, NSStatusBar, NSTimer, NSVariableStatusItemLength
+        from AppKit import NSMenu, NSMenuItem, NSStatusBar, NSTimer, NSVariableStatusItemLength
 
         self.item = NSStatusBar.systemStatusBar().statusItemWithLength_(NSVariableStatusItemLength)
         self.button = self.item.button()
         menu = NSMenu.alloc().init()
         menu.addItem_(self._menu_item("打开 TokenPulse", "toggle_"))
         menu.addItem_(self._menu_item("刷新用量", "refresh_"))
-        menu.addItem_(NSMenu.separatorItem())
+        menu.addItem_(NSMenuItem.separatorItem())
         menu.addItem_(self._menu_item("退出 TokenPulse", "quit_"))
         self.item.setMenu_(menu)
         self.refresh_(None)
         self.timer = NSTimer.scheduledTimerWithTimeInterval_target_selector_userInfo_repeats_(
             60.0, self, "refresh:", None, True
         )
-
-    def _remove(self) -> None:
-        if self.item is None:
-            return
-        from AppKit import NSStatusBar
-
-        if self.timer is not None:
-            self.timer.invalidate()
-            self.timer = None
-        NSStatusBar.systemStatusBar().removeStatusItem_(self.item)
-        self.item = self.button = None
-
-    def sync_display(self) -> None:
-        """Apply the saved placement immediately; no app restart required."""
-        if sys.platform != "darwin":
-            return
-        display = core.load_config().get("display") or {}
-        if display.get("placement", "desktop") == "menu_bar":
-            self._install()
-            self.window.hide()
-        else:
-            self._remove()
-            self.window.show()
 
     def toggle_(self, _sender) -> None:
         if self.visible:
@@ -369,16 +342,6 @@ class MenuBarController:
 
 
 def _on_start(window, api):
-    menu = MenuBarController(window)
-    api.menu_controller = menu
-    # pywebview invokes its startup callback on a worker thread.  Status-bar
-    # creation must be queued onto the Cocoa main loop.
-    try:
-        from PyObjCTools import AppHelper
-
-        AppHelper.callAfter(menu.sync_display)
-    except Exception:  # noqa: BLE001
-        menu.sync_display()
     threading.Thread(target=_warm_loop, daemon=True).start()
 
 
@@ -454,6 +417,8 @@ def main():
     _patch_pywebview_cocoa_screen_guard()
     x, y = _window_position()
     api = Api()
+    display = core.load_config().get("display") or {}
+    menu_bar = display.get("placement", "desktop") == "menu_bar"
     window = webview.create_window(
         "TokenPulse",
         url=HTML,
@@ -462,6 +427,7 @@ def main():
         height=HEIGHT,
         x=x,
         y=y,
+        hidden=menu_bar,
         frameless=True,
         easy_drag=True,
         on_top=True,
@@ -469,6 +435,11 @@ def main():
         background_color="#0e1118",
     )
     api.window = window
+    # This runs on Python's main thread before pywebview starts its worker
+    # callback, which is the safe point for native status-item creation.
+    api.menu_controller = MenuBarController(window)
+    if menu_bar:
+        api.menu_controller._install()
     webview.start(_on_start, (window, api))
 
 

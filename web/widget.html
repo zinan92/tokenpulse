@@ -909,7 +909,8 @@
     try {
       const r = JSON.parse(await window.pywebview.api.save_config(JSON.stringify(partial)));
       if (r.ok) {
-        msg.textContent = "已保存 ✓"; msg.className = "smsg ok";
+        msg.textContent = r.restart_required ? "已保存 ✓ 重启后切换展示位置" : "已保存 ✓";
+        msg.className = "smsg ok";
         // just consented -> push to the board now so the rank line lights up immediately
         if (consent) { try { await window.pywebview.api.ranking_submit_now(); } catch (e) {} }
         tick(); tickCost(); loadPanel();      // apply immediately (loadPanel refreshes the rank line)

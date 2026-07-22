@@ -119,6 +119,16 @@ def test_codex_dedupes_same_session_uuid(tmp_path, monkeypatch):
     assert res["sessions"] == 1
 
 
+def test_codex_today_uses_local_codexbar_scanner_for_live_default_globs(monkeypatch):
+    now = datetime.now().astimezone()
+    monkeypatch.setattr(core, "CODEX_GLOBS", core.DEFAULT_CODEX_GLOBS)
+    monkeypatch.setattr(core.codexbar, "usage", lambda **_: {
+        "available": True, "source": "codexbar", "tokens_today": 825_620_085,
+    })
+    res = core.codex_today(core.reference_day(now), "local")
+    assert res == {"total": 825_620_085, "turns": 0, "sessions": 0, "source": "codexbar"}
+
+
 # --------------------------------------------------------------- targets & pace
 
 

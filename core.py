@@ -16,11 +16,14 @@ import os
 from datetime import datetime, time, timedelta
 from pathlib import Path
 
+import codexbar
+
 CLAUDE_GLOB = os.path.expanduser("~/.claude/projects/**/*.jsonl")
 CODEX_GLOBS = (
     os.path.expanduser("~/.codex/sessions/**/*.jsonl"),
     os.path.expanduser("~/.codex/archived_sessions/**/*.jsonl"),
 )
+DEFAULT_CODEX_GLOBS = CODEX_GLOBS
 
 # ---------------------------------------------------------------- time helpers
 
@@ -127,12 +130,28 @@ def _codex_session_uuid(path: str) -> str:
 
 
 def codex_today(day, day_boundary: str = "local") -> dict:
-    """Total Codex tokens for `day`, summed from per-turn last_token_usage.
+    """Total Codex tokens for `day`.
 
-    Sessions duplicated across sessions/ and archived_sessions/ are counted
-    once (deduped by session UUID, keeping the most-recently-modified file).
-    Returns {'total', 'turns', 'sessions'}.
+    Prefer CodexBar's local scanner when present.  It understands the current
+    Codex cumulative ``total_token_usage`` records and forked-agent lineage,
+    which prevents a raw sum of repeated ``last_token_usage`` snapshots from
+    inflating today's total.  Synthetic/custom log globs deliberately retain
+    the built-in parser for deterministic tests and standalone operation.
+
+    Sessions duplicated across sessions/ and archived_sessions/ are otherwise
+    counted once (deduped by session UUID, keeping the newest file). Returns
+    {'total', 'turns', 'sessions'}.
     """
+    now = datetime.now().astimezone()
+    if CODEX_GLOBS == DEFAULT_CODEX_GLOBS and reference_day(now, day_boundary) == day:
+        external = codexbar.usage(now=now, days=1)
+        if external.get("available"):
+            return {
+                "total": int(external["tokens_today"]),
+                "turns": 0,
+                "sessions": 0,
+                "source": external.get("source"),
+            }
     floor = _day_start_mtime(day)
     # uuid -> chosen file (max mtime)
     chosen: dict[str, str] = {}
@@ -290,6 +309,10 @@ DEFAULT_CONFIG = {
     "providers": {
         "enabled": ["claude", "codex"],
         "keys": {},  # {"glm": "id.secret", "deepseek": "sk-…", …}
+    },
+    "display": {
+        "mode": "full",          # full widget or one-line compact widget
+        "placement": "desktop",  # desktop widget or native macOS menu bar
     },
     "handle": "",  # your X/Twitter @handle for the share card (blank -> git user / "you")
     "xhs_id": "",  # your 小红书号 (RED ID) for the share card (blank -> hidden)

@@ -41,6 +41,7 @@ DEFAULT_Y = 48
 class Api:
     def __init__(self):
         self.window = None
+        self.menu_controller = None
         self._rank_cache: tuple[float, str] | None = None
 
     def core(self) -> str:
@@ -124,7 +125,17 @@ class Api:
             return json.dumps({"ok": False, "errors": ["bad json"]})
         # config.json is re-read on every tick, so the change applies on the next
         # refresh; nothing to invalidate here.
-        return json.dumps(configio.save_partial(partial), default=str)
+        result = configio.save_partial(partial)
+        if result.get("ok") and self.menu_controller is not None:
+            # pywebview API calls may arrive on a bridge thread; AppKit window
+            # and status-bar changes must land back on the Cocoa main loop.
+            try:
+                from PyObjCTools import AppHelper
+
+                AppHelper.callAfter(self.menu_controller.sync_display)
+            except Exception:  # noqa: BLE001
+                self.menu_controller.sync_display()
+        return json.dumps(result, default=str)
 
     def providers_catalog(self) -> str:
         """All providers + the enabled set + whether each api provider has a key
@@ -263,7 +274,111 @@ def _warm_loop():
         time.sleep(480)  # ~8 min, under the 10-min in-memory TTL
 
 
-def _on_start(window):
+def _menu_bar_title(payload: dict) -> str:
+    """Short, glanceable native menu-bar text; safe to exercise without AppKit."""
+    combined = payload.get("combined") if isinstance(payload, dict) else {}
+    today = int((combined or {}).get("today") or 0)
+    state = (combined or {}).get("state") or "ontrack"
+    mark = {"behind": "↓", "early": "·", "ahead": "↑", "done": "✓", "rocket": "✦"}.get(state, "·")
+    return f"⏱ {cost.humanize_tokens(today)} {mark}"
+
+
+class MenuBarController:
+    """Native macOS status item, created only when the user opts into it."""
+    def __init__(self, window):
+        self.window = window
+        self.item = None
+        self.button = None
+        self.timer = None
+        self.visible = False
+
+    def _menu_item(self, title: str, action: str):
+        from AppKit import NSMenuItem
+
+        item = NSMenuItem.alloc().initWithTitle_action_keyEquivalent_(title, action, "")
+        item.setTarget_(self)
+        return item
+
+    def _install(self) -> None:
+        if self.item is not None:
+            return
+        from AppKit import NSMenu, NSStatusBar, NSTimer, NSVariableStatusItemLength
+
+        self.item = NSStatusBar.systemStatusBar().statusItemWithLength_(NSVariableStatusItemLength)
+        self.button = self.item.button()
+        menu = NSMenu.alloc().init()
+        menu.addItem_(self._menu_item("打开 TokenPulse", "toggle_"))
+        menu.addItem_(self._menu_item("刷新用量", "refresh_"))
+        menu.addItem_(NSMenu.separatorItem())
+        menu.addItem_(self._menu_item("退出 TokenPulse", "quit_"))
+        self.item.setMenu_(menu)
+        self.refresh_(None)
+        self.timer = NSTimer.scheduledTimerWithTimeInterval_target_selector_userInfo_repeats_(
+            60.0, self, "refresh:", None, True
+        )
+
+    def _remove(self) -> None:
+        if self.item is None:
+            return
+        from AppKit import NSStatusBar
+
+        if self.timer is not None:
+            self.timer.invalidate()
+            self.timer = None
+        NSStatusBar.systemStatusBar().removeStatusItem_(self.item)
+        self.item = self.button = None
+
+    def sync_display(self) -> None:
+        """Apply the saved placement immediately; no app restart required."""
+        if sys.platform != "darwin":
+            return
+        display = core.load_config().get("display") or {}
+        if display.get("placement", "desktop") == "menu_bar":
+            self._install()
+            self.window.hide()
+        else:
+            self._remove()
+            self.window.show()
+
+    def toggle_(self, _sender) -> None:
+        if self.visible:
+            self.window.hide()
+        else:
+            self.window.show()
+        self.visible = not self.visible
+
+    def refresh_(self, _sender) -> None:
+        try:
+            import codexbar
+
+            codexbar.clear_cache()
+            payload = webdata.core_payload()
+            if self.button is not None:
+                self.button.setTitle_(_menu_bar_title(payload))
+        except Exception:  # noqa: BLE001
+            if self.button is not None:
+                self.button.setTitle_("⏱ —")
+
+    def quit_(self, _sender) -> None:
+        try:
+            self.window.destroy()
+        finally:
+            from AppKit import NSApp
+
+            NSApp.terminate_(None)
+
+
+def _on_start(window, api):
+    menu = MenuBarController(window)
+    api.menu_controller = menu
+    # pywebview invokes its startup callback on a worker thread.  Status-bar
+    # creation must be queued onto the Cocoa main loop.
+    try:
+        from PyObjCTools import AppHelper
+
+        AppHelper.callAfter(menu.sync_display)
+    except Exception:  # noqa: BLE001
+        menu.sync_display()
     threading.Thread(target=_warm_loop, daemon=True).start()
 
 
@@ -354,7 +469,7 @@ def main():
         background_color="#0e1118",
     )
     api.window = window
-    webview.start(_on_start, window)
+    webview.start(_on_start, (window, api))
 
 
 if __name__ == "__main__":

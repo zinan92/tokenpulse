@@ -17,7 +17,7 @@
 in   本地日志  ~/.claude/projects/**/*.jsonl (Claude) + ~/.codex/sessions/**/*.jsonl (Codex)
    + models.dev 单价表 (直连, 每日本地缓存)   [CodexBar 可选: 仅 Claude 的 session/weekly %]
 
-out  常驻桌面 goad widget + Telegram 鞭策推送 + CLI 状态 + 可分享竖版战绩卡/单日纪录卡 (PNG + QR 分享页)
+out  常驻桌面 goad widget（可切一行紧凑 / macOS 菜单栏）+ Telegram 鞭策推送 + CLI 状态 + 可分享竖版战绩卡/单日纪录卡 (PNG + QR 分享页)
    鞭策面: 今日 token vs 150M/天目标 · pace 配速 · session/weekly 剩余额度 · today/30d cost
    战绩面: 西游记档位 · 生涯累计 · 单日峰值 · 单会话峰值 · 缓存命中率 · 徽章 · 顶部 X 身份 · 页脚 builder CTA
 
@@ -94,7 +94,7 @@ web/widget.html   (Telegram 推送)  (终端状态)    (可选·自动烧额度)
 
 数据口径逐字段验证：
 
-- **Token 计数** — Claude 按 `(message.id, requestId)` 去重（修正 transcript 重复写入导致的虚高，~485M → 真实 ~200M）；Codex 按 session UUID 去重、累加每轮 `last_token_usage`。
+- **Token 计数** — Claude 按 `(message.id, requestId)` 去重（修正 transcript 重复写入导致的虚高，~485M → 真实 ~200M）；Codex 优先复用已安装 CodexBar 的**本地**扫描器，它能识别当前 Codex 的累计快照与 forked-agent 边界，避免把 `last_token_usage` 重复叠加；未安装时才降级为内置本地解析。
 - **成本** — `tokens × models.dev 单价`，**直连 [models.dev](https://models.dev) 拉价格表**（每日本地缓存），新模型缺表时家族回退到最新同族费率。**不依赖 CodexBar**。
 - **真实额度** — **Codex** 的 5h/周 % 直接读本地 `~/.codex` session 的 `payload.rate_limits`，无需 CodexBar。**Claude** 的 5h/周/opus % 只在 Anthropic 的 OAuth 接口里（token 需刷新、自己刷有把你登出 Claude Code 的风险），所以**当 CodexBar 在跑时**读它落盘的结果；没装也行，Claude 那两栏显示 `—`，其它全正常。**CodexBar 是可选增强，不是必需。**
 
@@ -185,7 +185,7 @@ pipx install .          # 之后直接 `tokenpulse` / `tokenpulse-nudge`
 | **每日卡片快照** | `daily_snapshot.py` + launchd，每天北京时间 12:00 本地保存月度战绩卡和单日纪录卡 | ✅ |
 | **生涯累计 / 单会话峰值** | 永不裁剪的单调累加器（`lifetime.py` / `peaks.py`） | ✅ |
 | 在线时长 / 最长连续在线 | 合并双工具时间线（`history` / `continuity.py`）— 仅面板 | ✅ |
-| goad widget (web) | 暗色、drenched 状态反应、count-up、达标 flare、详情面板 + 战绩卡按钮 | ✅ |
+| goad widget (web) | 暗色、drenched 状态反应、count-up、达标 flare、详情面板 + 战绩卡按钮；可切一行紧凑或 macOS 菜单栏状态项 | ✅ |
 | Telegram 鞭策 | 落后 pace 或周额度没跟上时推 | ✅ |
 | 终端 CLI | `--json` / `--sessions` | ✅ |
 | furnace 自动烧额度 | 落后时无人值守派一个队列/循环作业给更落后的 plan | ⚙️ 默认关闭 |
@@ -245,6 +245,8 @@ tokenpulse/
 | `builder` | 卡片页脚 builder CTA（X handle / 红书 ID / 抖音 ID / QR URL） | `xparkzz` |
 | `share` | QR 分享页设置（cloudflared/local/base_url/端口） | 临时 cloudflared |
 | `ranking` | 全球烧量榜：`enabled`（设置里勾「加入排名」才 true）+ `url`（共享榜地址，出厂已填） | 默认关 |
+| `display.mode` | Widget 占用：`full` 或 `compact`（一行摘要） | `full` |
+| `display.placement` | 展示位置：`desktop` 或 `menu_bar`；菜单栏点开可临时查看完整面板 | `desktop` |
 | `active_window` | pace 配速窗口；`00:00–00:00` = 整 24h（按本地时区） | `00:00–00:00` |
 | `day_boundary` | 日界：`local`（你的时区）或 `utc` | `local` |
 | `checkpoints` | Telegram 推送时间点 | `15:00 / 20:00 / 23:00` |

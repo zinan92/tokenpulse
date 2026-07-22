@@ -1,7 +1,9 @@
 """Cost + token aggregates for TokenPulse.
 
-Prices tokens at API rates from the open models.dev catalog (fetched directly,
-no CodexBar dependency), giving "Today cost / 30d cost / 30d tokens".
+Prices tokens at API rates from the open models.dev catalog (fetched directly),
+giving "Today cost / 30d cost / 30d tokens". When CodexBar is installed, its
+local Codex scanner is reused because it understands current cumulative and
+forked-agent Codex logs.
 
 Cost = Σ over priced units of  input×in + cache_creation×cache_write +
 cache_read×cache_read + output×output  (per model, /1e6).
@@ -19,6 +21,7 @@ import time
 import urllib.request
 from datetime import datetime, timedelta, timezone
 
+import codexbar
 import core  # reuse _codex_session_uuid, _parse_ts, dedup ideas
 
 MODELS_DEV_URL = "https://models.dev/api.json"
@@ -225,6 +228,21 @@ def _codex_session_model(path: str) -> str:
 
 
 def _codex_summary(now: datetime) -> dict:
+    # Codex's current rollout format emits cumulative snapshots through forked
+    # agents. CodexBar's local scanner handles those boundaries exactly; use its
+    # already-local result when available so our widget matches the trusted
+    # ledger instead of multiplying repeated per-turn snapshots.
+    external = codexbar.usage(now=now, days=30)
+    if external.get("available"):
+        return {
+            "cost_today": external["cost_today"],
+            "cost_30d": external["cost_30d"],
+            "tokens_today": external["tokens_today"],
+            "tokens_30d": external["tokens_30d"],
+            "latest_tokens": external["tokens_today"],
+            "cache_read_30d": external["cache_read_30d"],
+            "input_30d": external["input_30d"],
+        }
     prices = _load_prices()
     today = now.astimezone().date()
     floor_day = today - timedelta(days=30)

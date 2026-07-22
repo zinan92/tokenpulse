@@ -12,6 +12,10 @@
     "enabled": ["claude", "codex"],
     "keys": {}
   },
+  "display": {
+    "mode": "full",
+    "placement": "desktop"
+  },
   "handle": "",
   "xhs_id": "",
   "checkpoints": ["15:00", "20:00", "23:00"],

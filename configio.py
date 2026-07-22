@@ -13,7 +13,7 @@ from pathlib import Path
 import core
 
 CONFIG_PATH = Path(__file__).with_name("config.json")
-EDITABLE = ("targets", "handle", "xhs_id", "providers", "ranking")  # + leaderboard consent
+EDITABLE = ("targets", "handle", "xhs_id", "providers", "ranking", "display")  # + display mode
 
 
 def load_raw() -> dict:
@@ -69,6 +69,15 @@ def validate_partial(p: dict) -> list[str]:
             if ks is not None and (not isinstance(ks, dict)
                                    or any(not isinstance(v, str) for v in ks.values())):
                 errs.append("providers.keys")
+    display = p.get("display")
+    if display is not None:
+        if not isinstance(display, dict):
+            errs.append("display")
+        else:
+            if display.get("mode") is not None and display.get("mode") not in {"full", "compact"}:
+                errs.append("display.mode")
+            if display.get("placement") is not None and display.get("placement") not in {"desktop", "menu_bar"}:
+                errs.append("display.placement")
     return errs
 
 

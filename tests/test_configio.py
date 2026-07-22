@@ -62,6 +62,12 @@ def test_validate_ranking_consent():
     assert "ranking" in configio.validate_partial({"ranking": "nope"})
 
 
+def test_display_accepts_compact_and_menu_bar_only():
+    assert configio.validate_partial({"display": {"mode": "compact", "placement": "menu_bar"}}) == []
+    assert "display.mode" in configio.validate_partial({"display": {"mode": "tiny"}})
+    assert "display.placement" in configio.validate_partial({"display": {"placement": "dock"}})
+
+
 def test_save_partial_ranking_consent_preserves_url(tmp_path, monkeypatch):
     """Toggling consent must flip enabled but KEEP the shipped board url (the UI
     only sends {ranking:{enabled:...}}; the deep-merge preserves url)."""

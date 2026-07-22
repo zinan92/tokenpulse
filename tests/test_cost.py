@@ -7,6 +7,7 @@ from datetime import datetime, timezone
 import pytest
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+import codexbar  # noqa: E402
 import cost  # noqa: E402
 
 PRICES = {
@@ -235,6 +236,7 @@ def test_codex_summary_dedupes_sessions_sums_usage_and_uses_latest_mtime(tmp_pat
 
     monkeypatch.setattr(cost, "_load_prices", lambda: PRICES)
     monkeypatch.setattr(cost.glob, "glob", fake_glob)
+    monkeypatch.setattr(cost.codexbar, "usage", lambda **_: {"available": False})
 
     summary = cost._codex_summary(now)
 
@@ -248,6 +250,37 @@ def test_codex_summary_dedupes_sessions_sums_usage_and_uses_latest_mtime(tmp_pat
     assert summary["cost_30d"] == pytest.approx(
         expected_today_cost + expected_older_dup_cost + expected_latest_cost
     )
+
+
+def test_codex_summary_matches_local_codexbar_when_available(monkeypatch):
+    now = datetime(2026, 7, 22, 23, 0, tzinfo=timezone.utc)
+    monkeypatch.setattr(cost.codexbar, "usage", lambda **_: {
+        "available": True,
+        "cost_today": 576.1155025,
+        "cost_30d": 8640.73,
+        "tokens_today": 825_620_085,
+        "tokens_30d": 11_000_000_000,
+        "cache_read_30d": 796_602_240,
+        "input_30d": 823_195_581,
+    })
+    summary = cost._codex_summary(now)
+    assert summary["tokens_today"] == 825_620_085
+    assert summary["cost_today"] == pytest.approx(576.1155025)
+    assert summary["latest_tokens"] == 825_620_085
+
+
+def test_codexbar_parser_uses_requested_local_day():
+    parsed = codexbar._parse([{
+        "daily": [
+            {"date": "2026-07-21", "totalTokens": 10, "totalCost": 1},
+            {"date": "2026-07-22", "totalTokens": 825_620_085, "totalCost": 576.1155025},
+        ],
+        "totals": {"totalTokens": 11_000_000_000, "totalCost": 8640.73,
+                   "cacheReadTokens": 796_602_240, "inputTokens": 823_195_581},
+    }], datetime(2026, 7, 22).date())
+    assert parsed["available"] is True
+    assert parsed["tokens_today"] == 825_620_085
+    assert parsed["tokens_30d"] == 11_000_000_000
 
 
 def test_usage_summary_ttl_zero_bypasses_stale_cache(monkeypatch):

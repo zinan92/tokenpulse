@@ -69,6 +69,17 @@
     transition: background 0.6s var(--ease), border-color 0.6s var(--ease);
   }
 
+  /* One-line glance mode: total + state only, for users who keep the widget
+     visible all day but do not want it to occupy a dashboard-sized corner. */
+  .compact-line { display: none; width: 100%; align-items: baseline; gap: 7px;
+                  white-space: nowrap; overflow: hidden; }
+  .compact-line .ctotal { color: var(--ink); font-size: 13px; font-weight: 700; }
+  .compact-line .cstate { color: var(--ink-faint); font-size: 11px; overflow: hidden;
+                           text-overflow: ellipsis; }
+  body.compact .frame { min-height: 34px; padding: 7px 10px; display: flex; align-items: center; }
+  body.compact header, body.compact .hero, body.compact .tools, body.compact .panel { display: none !important; }
+  body.compact .compact-line { display: flex; }
+
   /* ── header ── */
   header {
     display: flex; align-items: center; justify-content: space-between;
@@ -232,6 +243,8 @@
   }
   .srow input.wide { width: 54px; }
   .srow input.wider { width: 96px; }
+  .srow select { background: var(--bg-0); border: 1px solid var(--track); color: var(--ink);
+                 border-radius: 5px; padding: 3px 6px; font-size: 11px; }
   .srow .at { color: var(--ink-faint); margin-right: -3px; }
   .srow .consent { display: inline-flex; align-items: center; gap: 4px; color: var(--ink-dim);
     font-size: 11px; cursor: pointer; white-space: nowrap; }
@@ -388,6 +401,10 @@
 </head>
 <body data-state="ontrack">
   <div class="frame" id="frame">
+    <div class="compact-line" id="compact-line">
+      <span>⏱</span><span class="ctotal mono" id="compact-total">—</span>
+      <span class="cstate" id="compact-state">读取中…</span>
+    </div>
     <header>
       <div class="brand"><span class="spark"></span> TOKENPULSE</div>
       <div class="hright">
@@ -484,6 +501,11 @@
         <div class="srow"><span class="slbl">烧量榜</span>
           <label class="consent"><input type="checkbox" id="s-rank"> 加入排名</label>
           <i>勾选=同意上传你的 handle + 烧量参与排名；不勾只留本地（需先填 handle）</i></div>
+        <div class="srow"><span class="slbl">桌面占用</span>
+          <select id="s-display-mode"><option value="full">完整 widget</option><option value="compact">一行紧凑</option></select></div>
+        <div class="srow"><span class="slbl">展示位置</span>
+          <select id="s-display-placement"><option value="desktop">桌面浮窗</option><option value="menu_bar">菜单栏</option></select>
+          <i>菜单栏显示实时摘要；点菜单可临时打开完整面板</i></div>
         <div class="srow"><span class="slbl">追踪厂商</span><i>勾选要统计的厂商；只有 tokens 计入烧量</i></div>
         <div id="s-providers" class="provs"></div>
         <div class="srow"><button id="s-save">保存</button>
@@ -566,6 +588,8 @@
     $("c-fill").style.width = clamp(c.today / c.target * 100, 0, 100) + "%";
     $("c-pace").style.left = clamp(c.expected / c.target * 100, 0, 100) + "%";
     $("goad").innerHTML = goadFor(c);
+    $("compact-total").textContent = `${tok(c.today)} / ${tok(c.target)}`;
+    $("compact-state").textContent = { early: "待开烧", behind: "落后配速", ontrack: "配速正常", ahead: "领先", done: "今日达标", rocket: "超额燃烧" }[c.state] || "更新中";
     $("operator-line").textContent = c.operator || "choose the next AI-work session by priority.";
     $("impact-line").textContent = c.impact || "turn raw quota and pace into a visible next-session choice.";
     paintEggHunger(c);
@@ -829,6 +853,10 @@
     $("s-handle").value = (c.handle || "").replace(/^@/, "");
     $("s-xhs").value = c.xhs_id || "";
     $("s-rank").checked = !!(c.ranking && c.ranking.enabled);
+    const display = c.display || {};
+    $("s-display-mode").value = display.mode || "full";
+    $("s-display-placement").value = display.placement || "desktop";
+    document.body.classList.toggle("compact", (display.mode || "full") === "compact");
   }
   async function loadConfig() {
     try { populateSettings(JSON.parse(await window.pywebview.api.config())); } catch (e) {}
@@ -873,6 +901,10 @@
     partial.xhs_id = $("s-xhs").value.trim();  // empty -> hidden on card
     const consent = $("s-rank").checked;       // leaderboard opt-in
     partial.ranking = { enabled: consent };    // url is preserved by the deep-merge
+    partial.display = {
+      mode: $("s-display-mode").value,
+      placement: $("s-display-placement").value,
+    };
     await saveProviders();   // enabled set -> config, keys -> keychain
     try {
       const r = JSON.parse(await window.pywebview.api.save_config(JSON.stringify(partial)));
@@ -902,7 +934,8 @@
   let _lastH = 0;
   function fitWindow() {
     try {
-      const el = panelOpen() ? $("panel") : document.querySelector(".tools");
+      const el = document.body.classList.contains("compact") ? $("compact-line")
+        : (panelOpen() ? $("panel") : document.querySelector(".tools"));
       if (!el) return;
       const h = Math.ceil(el.getBoundingClientRect().bottom) + 15; // + frame bottom pad
       if (Math.abs(h - _lastH) >= 2 && window.pywebview && window.pywebview.api.fit) {

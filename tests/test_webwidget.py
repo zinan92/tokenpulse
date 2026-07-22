@@ -7,6 +7,17 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 import webwidget  # noqa: E402
 
 
+def test_menu_bar_title_is_short_and_stateful():
+    assert webwidget._menu_bar_title({"combined": {"today": 825_620_085, "state": "done"}}) == "⏱ 826M ✓"
+
+
+def test_widget_exposes_compact_and_menu_bar_display_controls():
+    html = open(os.path.join(os.path.dirname(os.path.dirname(__file__)), "web", "widget.html"), encoding="utf-8").read()
+    assert 'id="compact-line"' in html
+    assert 'id="s-display-mode"' in html
+    assert 'id="s-display-placement"' in html
+
+
 def test_clamp_window_position_keeps_widget_on_primary_screen():
     assert webwidget._clamp_window_position(2200, 48, screen_size=(2560, 1440)) == (2200, 48)
     assert webwidget._clamp_window_position(9999, 9999, screen_size=(2560, 1440)) == (

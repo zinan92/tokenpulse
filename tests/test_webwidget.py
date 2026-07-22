@@ -18,6 +18,9 @@ def test_widget_exposes_compact_and_menu_bar_display_controls():
     assert 'id="s-display-placement"' in html
     assert 'id="compact-settings"' in html
     assert "openCompactSettings" in html
+    assert "overflow-y: auto" in html
+    assert 'id="s-save">保存并重启' in html
+    assert "restart_widget" in html
 
 
 def test_display_mode_change_does_not_require_restart(monkeypatch):
@@ -46,6 +49,47 @@ def test_fit_allows_a_one_line_compact_height():
 
     assert api.fit(34) is True
     assert calls == [(webwidget.WIDTH, 34)]
+
+
+def test_restart_widget_acknowledges_before_scheduling_kickstart(monkeypatch):
+    commands = []
+
+    class Result:
+        returncode = 0
+
+    class ImmediateTimer:
+        def __init__(self, _delay, callback):
+            self.callback = callback
+
+        def start(self):
+            self.callback()
+
+    def fake_run(command, **_kwargs):
+        commands.append(command)
+        return Result()
+
+    monkeypatch.setattr(webwidget.subprocess, "run", fake_run)
+    monkeypatch.setattr(webwidget.threading, "Timer", ImmediateTimer)
+    monkeypatch.setattr(webwidget.os, "getuid", lambda: 501)
+
+    result = json.loads(webwidget.Api().restart_widget())
+
+    assert result == {"ok": True, "restarting": True}
+    assert commands == [
+        ["launchctl", "print", "gui/501/com.tokenpulse.widget"],
+        ["launchctl", "kickstart", "-k", "gui/501/com.tokenpulse.widget"],
+    ]
+
+
+def test_restart_widget_reports_missing_launchd_service(monkeypatch):
+    class Result:
+        returncode = 1
+
+    monkeypatch.setattr(webwidget.subprocess, "run", lambda *_args, **_kwargs: Result())
+
+    result = json.loads(webwidget.Api().restart_widget())
+
+    assert result == {"ok": False, "error": "未找到 TokenPulse 启动服务"}
 
 
 def test_main_installs_menu_bar_before_starting_gui_loop(monkeypatch):

@@ -129,6 +129,18 @@ def test_codex_today_uses_local_codexbar_scanner_for_live_default_globs(monkeypa
     assert res == {"total": 825_620_085, "turns": 0, "sessions": 0, "source": "codexbar"}
 
 
+def test_codex_today_fails_closed_when_live_codexbar_scanner_is_unavailable(monkeypatch):
+    now = datetime.now().astimezone()
+    monkeypatch.setattr(core, "CODEX_GLOBS", core.DEFAULT_CODEX_GLOBS)
+    monkeypatch.setattr(core.codexbar, "usage", lambda **_: {"available": False, "reason": "unavailable"})
+
+    res = core.codex_today(core.reference_day(now), "local")
+
+    assert res["total"] == 0
+    assert res["source"] == "codexbar-unavailable"
+    assert res["available"] is False
+
+
 # --------------------------------------------------------------- targets & pace
 
 

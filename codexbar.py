@@ -19,6 +19,7 @@ from datetime import datetime
 
 _TTL_SECONDS = 60
 _CACHE: dict[int, tuple[float, dict]] = {}
+_LAST_TRUSTED: dict[int, dict] = {}
 
 
 def _number(value) -> int | float:
@@ -63,18 +64,26 @@ def usage(now: datetime | None = None, days: int = 1, ttl: int = _TTL_SECONDS) -
         return cached[1]
     executable = shutil.which("codexbar")
     if not executable:
-        return _empty("not-installed")
-    try:
-        result = subprocess.run(
-            [executable, "cost", "--provider", "codex", "--days", str(days), "--format", "json"],
-            check=True,
-            capture_output=True,
-            text=True,
-            timeout=60 if days > 1 else 20,
-        )
-        parsed = _parse(json.loads(result.stdout), now.date())
-    except (OSError, ValueError, subprocess.SubprocessError):
-        parsed = _empty("unavailable")
+        parsed = _empty("not-installed")
+    else:
+        try:
+            result = subprocess.run(
+                [executable, "cost", "--provider", "codex", "--days", str(days), "--format", "json"],
+                check=True,
+                capture_output=True,
+                text=True,
+                timeout=60 if days > 1 else 20,
+            )
+            parsed = _parse(json.loads(result.stdout), now.date())
+        except (OSError, ValueError, subprocess.SubprocessError):
+            parsed = _empty("unavailable")
+    if parsed.get("available"):
+        _LAST_TRUSTED[days] = parsed
+    elif days in _LAST_TRUSTED:
+        # A transient local CLI failure must not make the widget fall back to
+        # the obsolete raw-log sum. Keep the last scanner result and identify
+        # it as stale so callers can remain truthful.
+        parsed = {**_LAST_TRUSTED[days], "stale": True}
     _CACHE[days] = (time.time(), parsed)
     return parsed
 

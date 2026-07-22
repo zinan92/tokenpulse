@@ -30,3 +30,8 @@
   visible control that restores the full widget before opening its panel.
 - An expanded frameless panel must scroll inside a bounded viewport; otherwise
   content accessibility depends on users discovering an invisible resize edge.
+- AppKit menu actions are Objective-C selectors (`name:`), not Python method
+  spellings (`name_`); a missing colon silently disables the entire menu.
+- Live Codex accounting must fail closed when the trusted local scanner is
+  unavailable; the legacy raw-log fallback is known to multiply cumulative
+  snapshots into invalid billions.

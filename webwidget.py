@@ -343,10 +343,12 @@ class MenuBarController:
         self.item = NSStatusBar.systemStatusBar().statusItemWithLength_(NSVariableStatusItemLength)
         self.button = self.item.button()
         menu = NSMenu.alloc().init()
-        menu.addItem_(self._menu_item("打开 TokenPulse", "toggle_"))
-        menu.addItem_(self._menu_item("刷新用量", "refresh_"))
+        # NSMenu actions use Objective-C selectors, not Python method names.
+        # PyObjC maps toggle_ → toggle:, etc.; omitting ':' disables the item.
+        menu.addItem_(self._menu_item("打开 TokenPulse", "toggle:"))
+        menu.addItem_(self._menu_item("刷新用量", "refresh:"))
         menu.addItem_(NSMenuItem.separatorItem())
-        menu.addItem_(self._menu_item("退出 TokenPulse", "quit_"))
+        menu.addItem_(self._menu_item("退出 TokenPulse", "quit:"))
         self.item.setMenu_(menu)
         self.refresh_(None)
         self.timer = NSTimer.scheduledTimerWithTimeInterval_target_selector_userInfo_repeats_(

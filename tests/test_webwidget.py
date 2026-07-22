@@ -11,6 +11,13 @@ def test_menu_bar_title_is_short_and_stateful():
     assert webwidget._menu_bar_title({"combined": {"today": 825_620_085, "state": "done"}}) == "⏱ 826M ✓"
 
 
+def test_menu_actions_use_objective_c_selectors():
+    source = open(webwidget.__file__, encoding="utf-8").read()
+    assert '"打开 TokenPulse", "toggle:"' in source
+    assert '"刷新用量", "refresh:"' in source
+    assert '"退出 TokenPulse", "quit:"' in source
+
+
 def test_widget_exposes_compact_and_menu_bar_display_controls():
     html = open(os.path.join(os.path.dirname(os.path.dirname(__file__)), "web", "widget.html"), encoding="utf-8").read()
     assert 'id="compact-line"' in html

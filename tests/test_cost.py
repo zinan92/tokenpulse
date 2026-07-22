@@ -283,6 +283,19 @@ def test_codexbar_parser_uses_requested_local_day():
     assert parsed["tokens_30d"] == 11_000_000_000
 
 
+def test_codexbar_retains_trusted_usage_on_transient_failure(monkeypatch):
+    codexbar._CACHE.clear()
+    codexbar._LAST_TRUSTED.clear()
+    good = {"available": True, "source": "codexbar", "tokens_today": 825_620_085}
+    codexbar._LAST_TRUSTED[1] = good
+    monkeypatch.setattr(codexbar.shutil, "which", lambda _: None)
+
+    result = codexbar.usage(days=1, ttl=0)
+
+    assert result["tokens_today"] == 825_620_085
+    assert result["stale"] is True
+
+
 def test_usage_summary_ttl_zero_bypasses_stale_cache(monkeypatch):
     now = datetime(2026, 6, 13, 12, 0, tzinfo=timezone.utc)
     stale = {

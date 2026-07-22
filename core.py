@@ -152,6 +152,17 @@ def codex_today(day, day_boundary: str = "local") -> dict:
                 "sessions": 0,
                 "source": external.get("source"),
             }
+        # Current Codex rollouts combine cumulative snapshots and forked agent
+        # lineages.  The legacy per-event sum below can inflate today's number
+        # by billions, so the live default path must fail closed rather than
+        # presenting a known-invalid total when CodexBar is transiently down.
+        return {
+            "total": 0,
+            "turns": 0,
+            "sessions": 0,
+            "source": "codexbar-unavailable",
+            "available": False,
+        }
     floor = _day_start_mtime(day)
     # uuid -> chosen file (max mtime)
     chosen: dict[str, str] = {}

@@ -125,8 +125,11 @@ class Api:
             return json.dumps({"ok": False, "errors": ["bad json"]})
         # config.json is re-read on every tick, so the change applies on the next
         # refresh; nothing to invalidate here.
+        previous_display = core.load_config().get("display") or {}
         result = configio.save_partial(partial)
-        if result.get("ok") and "display" in partial:
+        requested_display = partial.get("display") if isinstance(partial.get("display"), dict) else {}
+        if (result.get("ok") and "placement" in requested_display
+                and requested_display["placement"] != previous_display.get("placement", "desktop")):
             # pywebview API calls run off Cocoa's main thread.  Persist the
             # placement safely now; the next app launch creates/removes the
             # native status item on the correct thread.
@@ -216,7 +219,10 @@ class Api:
         """Resize the window to the content height the UI measured — so nothing
         (e.g. the '$2,690' cost number) ever gets clipped by a fixed height."""
         try:
-            h = max(180, min(900, int(round(float(height)))))
+            # Compact mode measures to one short row.  Do not retain the
+            # legacy full-card minimum here, or the widget looks compact while
+            # still reserving a large empty rectangle on the desktop.
+            h = max(34, min(900, int(round(float(height)))))
             if self.window is not None:
                 self.window.resize(WIDTH, h)
             return True

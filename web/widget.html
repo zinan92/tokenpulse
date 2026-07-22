@@ -76,6 +76,10 @@
   .compact-line .ctotal { color: var(--ink); font-size: 13px; font-weight: 700; }
   .compact-line .cstate { color: var(--ink-faint); font-size: 11px; overflow: hidden;
                            text-overflow: ellipsis; }
+  .compact-settings { margin-left: auto; color: var(--ink-dim); cursor: pointer; border: 0;
+                      background: transparent; font: inherit; font-size: 14px; line-height: 1;
+                      padding: 3px 0 3px 7px; }
+  .compact-settings:hover { color: var(--heat); }
   body.compact .frame { min-height: 34px; padding: 7px 10px; display: flex; align-items: center; }
   body.compact header, body.compact .hero, body.compact .tools, body.compact .panel { display: none !important; }
   body.compact .compact-line { display: flex; }
@@ -404,6 +408,7 @@
     <div class="compact-line" id="compact-line">
       <span>⏱</span><span class="ctotal mono" id="compact-total">—</span>
       <span class="cstate" id="compact-state">读取中…</span>
+      <button class="compact-settings" id="compact-settings" title="打开设置" aria-label="打开设置">⚙</button>
     </div>
     <header>
       <div class="brand"><span class="spark"></span> TOKENPULSE</div>
@@ -930,13 +935,36 @@
     setTimeout(fitWindow, 40);
   }
 
+  async function openCompactSettings(e) {
+    e.stopPropagation();
+    try {
+      // Compact is a presentation choice, never a dead end. Switch back to
+      // the full widget first, then expose the existing settings panel.
+      const r = JSON.parse(await window.pywebview.api.save_config(JSON.stringify({ display: { mode: "full" } })));
+      if (!r.ok) return;
+      document.body.classList.remove("compact");
+      const p = $("panel");
+      if (p.hidden) togglePanel();
+      else loadPanel();
+    } catch (err) {}
+  }
+
   // Resize the window to the actual content height so nothing (long cost line,
   // wrapped goad, or the expanded panel) is ever clipped by a fixed height.
   let _lastH = 0;
   function fitWindow() {
     try {
-      const el = document.body.classList.contains("compact") ? $("compact-line")
-        : (panelOpen() ? $("panel") : document.querySelector(".tools"));
+      // A compact widget is deliberately one row; measuring a vertically
+      // centred child while the old full-size window is still open produces a
+      // feedback loop that leaves empty space below it.
+      if (document.body.classList.contains("compact")) {
+        if (_lastH !== 34 && window.pywebview && window.pywebview.api.fit) {
+          _lastH = 34;
+          window.pywebview.api.fit(34);
+        }
+        return;
+      }
+      const el = panelOpen() ? $("panel") : document.querySelector(".tools");
       if (!el) return;
       const h = Math.ceil(el.getBoundingClientRect().bottom) + 15; // + frame bottom pad
       if (Math.abs(h - _lastH) >= 2 && window.pywebview && window.pywebview.api.fit) {
@@ -969,6 +997,8 @@
     // interactions inside the panel (settings inputs/button) must not drag the window
     $("panel").addEventListener("mousedown", e => e.stopPropagation());
     $("s-save").addEventListener("click", e => { e.stopPropagation(); saveSettings(); });
+    $("compact-settings").addEventListener("mousedown", e => e.stopPropagation());
+    $("compact-settings").addEventListener("click", openCompactSettings);
     $("share-btn").addEventListener("click", e => { e.stopPropagation(); shareCard(); });
     $("share-open").addEventListener("click", e => {
       e.stopPropagation();

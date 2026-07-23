@@ -8,7 +8,14 @@ import webwidget  # noqa: E402
 
 
 def test_menu_bar_title_is_short_and_stateful():
-    assert webwidget._menu_bar_title({"combined": {"today": 825_620_085, "state": "done"}}) == "⏱ 826M ✓"
+    payload = {
+        "combined": {"today": 9_000_000_000, "state": "rocket"},
+        "tools": {
+            "claude": {"today": 40_443_106, "state": "ontrack"},
+            "codex": {"today": 825_620_085, "state": "done"},
+        },
+    }
+    assert webwidget._menu_bar_title(payload) == "⏱ Codex 826M ✓"
 
 
 def test_menu_actions_use_objective_c_selectors():

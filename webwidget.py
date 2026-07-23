@@ -311,12 +311,17 @@ def _warm_loop():
 
 
 def _menu_bar_title(payload: dict) -> str:
-    """Short, glanceable native menu-bar text; safe to exercise without AppKit."""
-    combined = payload.get("combined") if isinstance(payload, dict) else {}
-    today = int((combined or {}).get("today") or 0)
-    state = (combined or {}).get("state") or "ontrack"
+    """Short Codex-labelled native menu-bar text; safe without AppKit.
+
+    CodexBar measures Codex only.  Showing a cross-provider total in this
+    small surface made direct comparisons look like accounting mistakes.
+    """
+    tools = payload.get("tools") if isinstance(payload, dict) else {}
+    codex = tools.get("codex") if isinstance(tools, dict) else {}
+    today = int((codex or {}).get("today") or 0)
+    state = (codex or {}).get("state") or "ontrack"
     mark = {"behind": "↓", "early": "·", "ahead": "↑", "done": "✓", "rocket": "✦"}.get(state, "·")
-    return f"⏱ {cost.humanize_tokens(today)} {mark}"
+    return f"⏱ Codex {cost.humanize_tokens(today)} {mark}"
 
 
 class MenuBarController:

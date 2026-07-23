@@ -35,3 +35,5 @@
 - Live Codex accounting must fail closed when the trusted local scanner is
   unavailable; the legacy raw-log fallback is known to multiply cumulative
   snapshots into invalid billions.
+- A compact menu-bar title must name its provider.  A combined total cannot be
+  compared to CodexBar's Codex-only ledger without creating false alarms.

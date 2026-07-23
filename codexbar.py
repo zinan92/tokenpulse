@@ -11,6 +11,7 @@ cleanly to TokenPulse's built-in parser when the executable is unavailable.
 from __future__ import annotations
 
 import json
+import os
 import shutil
 import subprocess
 import time
@@ -20,6 +21,10 @@ from datetime import datetime
 _TTL_SECONDS = 60
 _CACHE: dict[int, tuple[float, dict]] = {}
 _LAST_TRUSTED: dict[int, dict] = {}
+_STANDARD_EXECUTABLES = (
+    "/opt/homebrew/bin/codexbar",  # Apple Silicon Homebrew (launchd has no shell PATH)
+    "/usr/local/bin/codexbar",     # Intel Homebrew / common manual installs
+)
 
 
 def _number(value) -> int | float:
@@ -28,6 +33,15 @@ def _number(value) -> int | float:
 
 def _empty(reason: str) -> dict:
     return {"available": False, "reason": reason}
+
+
+def _find_executable() -> str | None:
+    """Locate CodexBar even when launchd starts without the user's PATH."""
+    candidates = [shutil.which("codexbar"), *_STANDARD_EXECUTABLES]
+    for candidate in candidates:
+        if candidate and os.path.isfile(candidate) and os.access(candidate, os.X_OK):
+            return candidate
+    return None
 
 
 def _parse(payload, day) -> dict:
@@ -62,7 +76,7 @@ def usage(now: datetime | None = None, days: int = 1, ttl: int = _TTL_SECONDS) -
     cached = _CACHE.get(days)
     if cached and (time.time() - cached[0]) < ttl:
         return cached[1]
-    executable = shutil.which("codexbar")
+    executable = _find_executable()
     if not executable:
         parsed = _empty("not-installed")
     else:

@@ -288,12 +288,21 @@ def test_codexbar_retains_trusted_usage_on_transient_failure(monkeypatch):
     codexbar._LAST_TRUSTED.clear()
     good = {"available": True, "source": "codexbar", "tokens_today": 825_620_085}
     codexbar._LAST_TRUSTED[1] = good
-    monkeypatch.setattr(codexbar.shutil, "which", lambda _: None)
+    monkeypatch.setattr(codexbar, "_find_executable", lambda: None)
 
     result = codexbar.usage(days=1, ttl=0)
 
     assert result["tokens_today"] == 825_620_085
     assert result["stale"] is True
+
+
+def test_codexbar_finds_homebrew_install_without_shell_path(monkeypatch):
+    monkeypatch.setenv("PATH", "")
+    monkeypatch.setattr(codexbar.shutil, "which", lambda _: None)
+    monkeypatch.setattr(codexbar.os.path, "isfile", lambda path: path == "/opt/homebrew/bin/codexbar")
+    monkeypatch.setattr(codexbar.os, "access", lambda path, mode: path == "/opt/homebrew/bin/codexbar")
+
+    assert codexbar._find_executable() == "/opt/homebrew/bin/codexbar"
 
 
 def test_usage_summary_ttl_zero_bypasses_stale_cache(monkeypatch):

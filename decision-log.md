@@ -37,3 +37,6 @@
   snapshots into invalid billions.
 - A compact menu-bar title must name its provider.  A combined total cannot be
   compared to CodexBar's Codex-only ledger without creating false alarms.
+- launchd does not inherit the interactive shell PATH.  Resolve local helpers
+  from standard executable locations or the GUI process will falsely report
+  unavailable usage despite the terminal working.

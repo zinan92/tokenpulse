@@ -10,6 +10,7 @@
 - 菜单栏的打开/刷新/退出均使用已验证的 Objective-C action selector；Codex 本地扫描短暂失败时保留上次可信值或明确不可用，绝不回退到会虚高的原始累计日志求和。
 - 菜单栏现在明确显示 `Codex …M`（不是 Claude 或跨厂商合计），可直接与 CodexBar 核对；完整 widget 保留分项及合计。
 - launchd 无 PATH 时仍会从标准本机安装位置解析 CodexBar（含 Apple Silicon Homebrew），避免菜单栏显示错误的 `Codex 0`。
+- 菜单栏的“打开 TokenPulse”会临时展开完整 widget（不改常驻菜单栏/紧凑偏好）；再次点击则隐藏。
 - 体系角色:loop 全周期演练与 claimer 冒烟的**指定沙盒仓**,share 测试已 sandbox-hermetic。
 - 无排队任务。
 

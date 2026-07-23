@@ -40,3 +40,6 @@
 - launchd does not inherit the interactive shell PATH.  Resolve local helpers
   from standard executable locations or the GUI process will falsely report
   unavailable usage despite the terminal working.
+- A menu item named "open" must show the complete card.  Revealing the saved
+  34px compact window is technically an action but indistinguishable from no
+  response in normal menu-bar use.

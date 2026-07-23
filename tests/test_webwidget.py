@@ -25,6 +25,37 @@ def test_menu_actions_use_objective_c_selectors():
     assert '"退出 TokenPulse", "quit:"' in source
 
 
+def test_menu_open_shows_a_full_widget_without_saving_display_preferences():
+    calls = []
+
+    class FakeWindow:
+        def restore(self):
+            calls.append("restore")
+
+        def resize(self, width, height):
+            calls.append(("resize", width, height))
+
+        def show(self):
+            calls.append("show")
+
+        def hide(self):
+            calls.append("hide")
+
+        def evaluate_js(self, script):
+            calls.append(("js", script))
+
+    menu = webwidget.MenuBarController(FakeWindow())
+    menu.toggle_(None)
+
+    assert calls[:3] == ["restore", ("resize", webwidget.WIDTH, webwidget.HEIGHT), "show"]
+    assert "classList.remove('compact')" in calls[3][1]
+    assert menu.visible is True
+
+    menu.toggle_(None)
+    assert calls[-1] == "hide"
+    assert menu.visible is False
+
+
 def test_widget_exposes_compact_and_menu_bar_display_controls():
     html = open(os.path.join(os.path.dirname(os.path.dirname(__file__)), "web", "widget.html"), encoding="utf-8").read()
     assert 'id="compact-line"' in html

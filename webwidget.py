@@ -363,9 +363,24 @@ class MenuBarController:
     def toggle_(self, _sender) -> None:
         if self.visible:
             self.window.hide()
+            self.visible = False
         else:
+            # A menu-bar configuration normally owns a hidden 34px compact
+            # window. "Open TokenPulse" must expose a recognisable full card,
+            # not merely unhide that nearly invisible strip. This is temporary
+            # UI state: the saved menu-bar/compact preference remains intact.
+            self.window.restore()
+            self.window.resize(WIDTH, HEIGHT)
             self.window.show()
-        self.visible = not self.visible
+            self.window.evaluate_js("""
+                document.body.classList.remove('compact');
+                const panel = document.getElementById('panel');
+                const chev = document.getElementById('chev');
+                if (panel) panel.hidden = true;
+                if (chev) chev.classList.remove('open');
+                if (typeof fitWindow === 'function') setTimeout(fitWindow, 0);
+            """)
+            self.visible = True
 
     def refresh_(self, _sender) -> None:
         try:
